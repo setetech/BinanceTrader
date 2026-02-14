@@ -1,0 +1,23 @@
+# Binaries and compiled files
+*.exe
+*.res
+*.identcache
+*.dproj.local
+*.skincfg
+
+# Database and config (contain API keys)
+*.db
+*.db-journal
+*.ini
+
+# Delphi IDE
+__history/
+__recovery/
+*.dcu
+*.~*
+
+# WebView2 cache
+EdgeCache/
+
+# Claude
+.claude/

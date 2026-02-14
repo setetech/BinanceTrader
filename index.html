@@ -1,0 +1,3719 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binance Recovery Bot</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0b0e11;
+  --bg-secondary: #1e2329;
+  --bg-card: #181c22;
+  --accent: #f0b90b;
+  --green: #0ecb81;
+  --red: #f6465d;
+  --blue: #1e90ff;
+  --text: #eaecef;
+  --text-muted: #848e9c;
+  --border: #2b3139;
+  --purple: #a855f7;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+  padding-bottom: 28px;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ===== APP SHELL ===== */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ===== TOP BAR ===== */
+#topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 50px;
+  flex-shrink: 0;
+}
+
+#topbar .logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+#topbar .logo .sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+#topbar .status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+}
+
+.status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.offline { background: var(--red); }
+
+/* ===== TABS ===== */
+#tab-bar {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab-btn:hover { color: var(--text); background: rgba(240,185,11,0.05); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ===== TAB CONTENT ===== */
+#tab-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.tab-panel {
+  display: none;
+  height: 100%;
+  overflow: auto;
+}
+
+.tab-panel.active { display: block; }
+
+/* ===== SCANNER TAB ===== */
+#scanner-panel {
+  display: none;
+  height: 100%;
+  overflow: hidden;
+}
+#scanner-panel.active {
+  display: grid;
+  grid-template-columns: 60% 40%;
+  gap: 0;
+}
+
+.scanner-left {
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.scanner-right {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* ===== TRADING TAB ===== */
+#trading-panel {
+  display: none;
+  height: 100%;
+  overflow: hidden;
+}
+#trading-panel.active {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.trading-left {
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.trading-right {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* ===== CONFIG TAB ===== */
+#config-panel {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.config-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+/* ===== LOG TAB ===== */
+#log-panel {
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  height: 100%;
+}
+#log-panel.active { display: flex; }
+
+#log-container {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-y: auto;
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.log-time {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.log-tag {
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 65px;
+  text-align: center;
+}
+
+.log-tag.binance { background: rgba(240,185,11,0.15); color: var(--accent); }
+.log-tag.ia { background: rgba(168,85,247,0.15); color: var(--purple); }
+.log-tag.bot { background: rgba(30,144,255,0.15); color: var(--blue); }
+.log-tag.trade { background: rgba(14,203,129,0.15); color: var(--green); }
+.log-tag.erro { background: rgba(246,70,93,0.15); color: var(--red); }
+.log-tag.system { background: rgba(132,142,156,0.15); color: var(--text-muted); }
+
+.log-message { color: var(--text); word-break: break-word; }
+
+/* ===== HELP/MANUAL TAB ===== */
+#help-panel {
+  padding: 24px 32px;
+  display: none;
+  height: 100%;
+  overflow-y: auto;
+}
+#help-panel.active { display: block; }
+
+.help-container {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.help-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.help-section-header {
+  background: var(--bg-secondary);
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.help-section-header:hover { background: rgba(240,185,11,0.06); }
+
+.help-section-header .chevron {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.help-section.open .chevron { transform: rotate(180deg); }
+
+.help-section-body {
+  padding: 20px;
+  display: none;
+  line-height: 1.8;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.help-section.open .help-section-body { display: block; }
+
+.help-param {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 10px 0;
+}
+
+.help-param-name {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 14px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-param-name .badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.help-param-name .badge.required { background: rgba(246,70,93,0.15); color: var(--red); }
+.help-param-name .badge.optional { background: rgba(132,142,156,0.15); color: var(--text-muted); }
+.help-param-name .badge.danger { background: rgba(246,70,93,0.25); color: var(--red); }
+
+.help-param-desc {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.help-param-desc strong { color: var(--text); }
+
+.help-tip {
+  background: rgba(30,144,255,0.08);
+  border-left: 3px solid var(--blue);
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  margin: 12px 0;
+  font-size: 12px;
+  color: var(--blue);
+  line-height: 1.6;
+}
+
+.help-warning {
+  background: rgba(246,70,93,0.08);
+  border-left: 3px solid var(--red);
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  margin: 12px 0;
+  font-size: 12px;
+  color: var(--red);
+  line-height: 1.6;
+}
+
+.help-flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.help-flow-step {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.help-flow-arrow {
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+}
+
+.help-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.help-table tr:hover td { background: rgba(240,185,11,0.03); }
+
+/* ===== CARDS ===== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-accent { background: var(--accent); color: #0b0e11; }
+.btn-accent:hover { background: #d4a30a; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:hover { background: #0bb574; }
+.btn-red { background: var(--red); color: #fff; }
+.btn-red:hover { background: #e03b50; }
+.btn-blue { background: var(--blue); color: #fff; }
+.btn-blue:hover { background: #1a7de0; }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-lg { padding: 12px 32px; font-size: 16px; }
+
+/* ===== TABLE ===== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(43,49,57,0.5);
+  font-size: 13px;
+}
+
+.data-table tr:hover { background: rgba(240,185,11,0.03); }
+.data-table tr.selected-row { background: rgba(240,185,11,0.08); border-left: 2px solid var(--accent); }
+.data-table tr { cursor: pointer; }
+
+.positive { color: var(--green); }
+.negative { color: var(--red); }
+
+/* ===== COIN DETAIL ===== */
+.coin-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.coin-symbol { font-size: 22px; font-weight: 700; color: var(--accent); }
+.coin-price { font-size: 28px; font-weight: 700; }
+.coin-change { font-size: 14px; font-weight: 600; }
+
+/* ===== CHART ===== */
+.chart-container {
+  position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.chart-container canvas { display: block; width: 100%; }
+
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(11,14,17,0.92);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  pointer-events: none;
+  display: none;
+  z-index: 10;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+/* ===== INDICATORS GRID ===== */
+.indicators-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.indicator-item {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.indicator-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.indicator-value { font-size: 16px; font-weight: 600; }
+
+/* ===== SIGNAL CARD ===== */
+.signal-card { border-left: 3px solid var(--text-muted); }
+.signal-card.STRONG_BUY, .signal-card.BUY { border-left-color: var(--green); }
+.signal-card.SELL, .signal-card.STRONG_SELL { border-left-color: var(--red); }
+.signal-card.HOLD { border-left-color: var(--accent); }
+
+.signal-name { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+.signal-name.STRONG_BUY, .signal-name.BUY { color: var(--green); }
+.signal-name.SELL, .signal-name.STRONG_SELL { color: var(--red); }
+.signal-name.HOLD { color: var(--accent); }
+
+.confidence-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.confidence-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.signal-reasoning {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 10px 0;
+  font-style: italic;
+}
+
+.signal-prices {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.signal-price-item {
+  text-align: center;
+  padding: 6px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+}
+
+.signal-price-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.signal-price-value {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* ===== INPUTS ===== */
+.input-group { margin-bottom: 14px; }
+
+.input-group label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.input-wrapper:focus-within { border-color: var(--accent); }
+
+.input-wrapper input,
+.input-wrapper select {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.input-wrapper .suffix {
+  padding: 0 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+input, select, textarea {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+/* ===== TRADE BUTTONS ===== */
+.trade-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* ===== BOT ===== */
+.bot-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.bot-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* ===== TOGGLE ===== */
+.toggle-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.toggle-switch {
+  width: 44px;
+  height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+.toggle-switch.active { background: var(--accent); }
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+}
+.toggle-switch.active::after { transform: translateX(20px); }
+
+/* ===== WARNING ===== */
+.warning-box {
+  background: rgba(246,70,93,0.1);
+  border: 1px solid rgba(246,70,93,0.3);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--red);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+/* ===== MISC ===== */
+.scan-progress {
+  font-size: 12px;
+  color: var(--accent);
+  margin-left: 12px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.placeholder-text {
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.no-selection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  gap: 10px;
+}
+.no-selection .icon { font-size: 48px; opacity: 0.3; }
+.no-selection .text { font-size: 14px; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-testnet { background: rgba(240,185,11,0.15); color: var(--accent); }
+.badge-mainnet { background: rgba(14,203,129,0.15); color: var(--green); }
+
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'Consolas', monospace;
+  z-index: 100;
+}
+.footer span { display: flex; align-items: center; gap: 8px; }
+.footer .accent { color: var(--accent); }
+
+/* ===== PERFORMANCE TAB ===== */
+.perf-panel { padding: 16px; overflow-y: auto; height: 100%; }
+
+.perf-cards-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.perf-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+}
+.perf-card-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.perf-card-value { font-size: 22px; font-weight: 700; }
+.perf-card-value.positive { color: var(--green); }
+.perf-card-value.negative { color: var(--red); }
+.perf-card-value.neutral { color: var(--text); }
+.perf-card-sub { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+.perf-chart-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.perf-chart-card .card-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: block; }
+#equity-canvas { width: 100%; height: 220px; display: block; border-radius: 4px; }
+
+.perf-tables-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.perf-table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-x: auto;
+}
+.perf-table-card .card-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: block; }
+.perf-table-card table { width: 100%; }
+.perf-full-width { grid-column: 1 / -1; }
+
+.perf-row-positive { background: rgba(14,203,129,0.06); }
+.perf-row-negative { background: rgba(246,70,93,0.06); }
+
+/* ===== WALLET (CARTEIRA) TAB ===== */
+.wallet-panel { padding: 16px; overflow-y: auto; height: 100%; }
+.wallet-summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wallet-total-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.wallet-total-value { font-size: 28px; font-weight: 700; color: var(--accent); }
+.wallet-total-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.wallet-table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-x: auto;
+}
+.wallet-table-card .card-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: block; }
+.wallet-table-card table { width: 100%; }
+.wallet-loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ====== TOP BAR ====== -->
+  <div id="topbar">
+    <div class="logo">
+      <span>&#x1F680; Binance Recovery Bot</span>
+      <span class="sub">v1.0</span>
+    </div>
+    <div class="status-bar">
+      <span id="scan-progress-bar"></span>
+      <span id="connection-status">
+        <span class="status-dot offline" id="conn-dot"></span>
+        <span id="conn-text">Desconectado</span>
+      </span>
+      <span id="net-badge" class="badge badge-testnet" style="display:none;">TESTNET</span>
+    </div>
+  </div>
+
+  <!-- ====== TAB BAR ====== -->
+  <div id="tab-bar">
+    <button class="tab-btn active" data-tab="scanner">&#x1F50D; Scanner</button>
+    <button class="tab-btn" data-tab="trading">&#x1F4B9; Trading</button>
+    <button class="tab-btn" data-tab="config">&#x2699;&#xFE0F; Configuracoes</button>
+    <button class="tab-btn" data-tab="log">&#x1F4CB; Log</button>
+    <button class="tab-btn" data-tab="help">&#x1F4D6; Manual</button>
+    <button class="tab-btn" data-tab="performance">&#x1F4CA; Desempenho</button>
+    <button class="tab-btn" data-tab="wallet">&#x1F4B0; Carteira</button>
+  </div>
+
+  <!-- ====== TAB CONTENT ====== -->
+  <div id="tab-content">
+
+    <!-- ==================== SCANNER TAB ==================== -->
+    <div id="scanner-panel" class="tab-panel active" data-tab-panel="scanner">
+      <div class="scanner-left">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F3C6; Top Recovery Coins</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="last-scan-time" style="font-size:11px;color:var(--text-muted);"></span>
+              <button class="btn btn-accent btn-sm" id="btn-scan" onclick="doScan()">&#x1F504; Scan Now</button>
+            </div>
+          </div>
+          <table class="data-table" id="coins-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Moeda</th>
+                <th>Preco</th>
+                <th>Variacao 24h</th>
+                <th>Volume</th>
+                <th>Acao</th>
+              </tr>
+            </thead>
+            <tbody id="coins-tbody">
+              <tr><td colspan="6" class="placeholder-text">Clique em "Scan Now" para buscar as moedas com melhor recuperacao.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="scanner-right" id="scanner-detail">
+        <div class="no-selection" id="no-coin-selected">
+          <div class="icon">&#x1F4C8;</div>
+          <div class="text">Selecione uma moeda para ver detalhes</div>
+        </div>
+
+        <div id="coin-detail" style="display:none;">
+          <!-- Coin Header -->
+          <div class="card">
+            <div class="coin-header">
+              <span class="coin-symbol" id="detail-symbol">--</span>
+              <span class="coin-change" id="detail-change">--</span>
+            </div>
+            <div class="coin-price" id="detail-price">--</div>
+          </div>
+
+          <!-- Chart -->
+          <div class="card" style="padding:8px;">
+            <div class="chart-container" id="chart-wrapper">
+              <canvas id="candle-chart" height="300"></canvas>
+              <div class="chart-tooltip" id="chart-tooltip"></div>
+            </div>
+          </div>
+
+          <!-- Indicators -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">&#x1F4CA; Indicadores Tecnicos</span>
+            </div>
+            <div class="indicators-grid" id="indicators-grid">
+              <div class="indicator-item">
+                <div class="indicator-label">RSI (14)</div>
+                <div class="indicator-value" id="ind-rsi">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">MACD</div>
+                <div class="indicator-value" id="ind-macd">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">SMA 20</div>
+                <div class="indicator-value" id="ind-sma20">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">SMA 50</div>
+                <div class="indicator-value" id="ind-sma50">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">Bollinger Sup</div>
+                <div class="indicator-value" id="ind-boll-up">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">Bollinger Inf</div>
+                <div class="indicator-value" id="ind-boll-low">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">EMA 12</div>
+                <div class="indicator-value" id="ind-ema12">--</div>
+              </div>
+              <div class="indicator-item">
+                <div class="indicator-label">ATR</div>
+                <div class="indicator-value" id="ind-atr">--</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Signal -->
+          <div class="card signal-card" id="signal-card">
+            <div class="card-header">
+              <span class="card-title">&#x1F916; Sinal IA</span>
+              <button class="btn btn-blue btn-sm" id="btn-analyze" onclick="doAnalyze()">&#x1F9E0; Analisar com IA</button>
+            </div>
+            <div id="signal-content">
+              <div class="placeholder-text">Clique em "Analisar com IA" para gerar sinal.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TRADING TAB ==================== -->
+    <div id="trading-panel" class="tab-panel" data-tab-panel="trading">
+      <div class="trading-left">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F4B0; Negociacao</span>
+          </div>
+          <div style="margin-bottom:14px;">
+            <span style="font-size:12px;color:var(--text-muted);">MOEDA SELECIONADA</span>
+            <div style="font-size:18px;font-weight:700;color:var(--accent);margin-top:4px;" id="trade-selected-coin">Nenhuma selecionada</div>
+            <div style="font-size:14px;color:var(--text-muted);margin-top:2px;" id="trade-selected-price">--</div>
+          </div>
+          <div class="input-group">
+            <label>Quantidade</label>
+            <div class="input-wrapper">
+              <input type="number" id="trade-amount" placeholder="0.00" step="0.01" min="0">
+              <span class="suffix">USDT</span>
+            </div>
+          </div>
+          <div class="trade-buttons">
+            <button class="btn btn-green btn-lg" onclick="doBuy()">&#x1F7E2; COMPRAR</button>
+            <button class="btn btn-red btn-lg" onclick="doSell()">&#x1F534; VENDER</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F916; Bot Automatico</span>
+          </div>
+          <div class="bot-status">
+            <span class="status-dot offline" id="bot-dot"></span>
+            <span id="bot-status-text">Bot parado</span>
+          </div>
+          <div class="bot-controls">
+            <button class="btn btn-green" id="btn-start-bot" onclick="doStartBot()">&#x25B6; Iniciar Bot</button>
+            <button class="btn btn-red" id="btn-stop-bot" onclick="doStopBot()" disabled>&#x23F9; Parar Bot</button>
+          </div>
+          <div class="toggle-wrapper" style="margin-top:14px;">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Auto-Trade</div>
+              <div style="font-size:11px;color:var(--text-muted);">Execucao automatica de ordens</div>
+            </div>
+            <div class="toggle-switch" id="toggle-autotrade" onclick="toggleAutoTrade()"></div>
+          </div>
+          <div class="warning-box" id="autotrade-warning" style="display:none;">
+            &#x26A0;&#xFE0F; <strong>Atencao:</strong> Auto-trade executara ordens reais automaticamente. Use com cautela e sempre em testnet primeiro.
+          </div>
+        </div>
+      </div>
+
+      <div class="trading-right">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F4B3; Saldo</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Base (<span id="bal-base-asset">--</span>)</div>
+              <div style="font-size:18px;font-weight:700;margin-top:4px;" id="bal-base-free">0.00</div>
+              <div style="font-size:11px;color:var(--text-muted);">Bloqueado: <span id="bal-base-locked">0.00</span></div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Quote (<span id="bal-quote-asset">USDT</span>)</div>
+              <div style="font-size:18px;font-weight:700;margin-top:4px;" id="bal-quote-free">0.00</div>
+              <div style="font-size:11px;color:var(--text-muted);">Bloqueado: <span id="bal-quote-locked">0.00</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F4DC; Historico de Trades</span>
+          </div>
+          <div style="max-height:400px;overflow-y:auto;">
+            <table class="data-table" id="trades-table">
+              <thead>
+                <tr>
+                  <th>Hora</th>
+                  <th>Par</th>
+                  <th>Lado</th>
+                  <th>Preco</th>
+                  <th>Qtd</th>
+                  <th>Sinal</th>
+                </tr>
+              </thead>
+              <tbody id="trades-tbody">
+                <tr><td colspan="6" class="placeholder-text">Nenhum trade registrado.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== CONFIG TAB ==================== -->
+    <div id="config-panel" class="tab-panel" data-tab-panel="config">
+      <div class="config-grid">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F511; Binance API</span>
+          </div>
+          <div class="input-group">
+            <label>API Key</label>
+            <input type="password" id="cfg-apiKey" placeholder="Sua API Key da Binance">
+          </div>
+          <div class="input-group">
+            <label>Secret Key</label>
+            <input type="password" id="cfg-secretKey" placeholder="Sua Secret Key">
+          </div>
+          <div class="toggle-wrapper">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Testnet</div>
+              <div style="font-size:11px;color:var(--text-muted);">Usar rede de teste da Binance</div>
+            </div>
+            <div class="toggle-switch" id="cfg-testnet" onclick="toggleConfigSwitch('cfg-testnet')"></div>
+          </div>
+          <button class="btn btn-outline" style="margin-top:8px;" onclick="doTestConnection()">&#x1F50C; Testar Conexao</button>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F9E0; IA / LLM</span>
+          </div>
+          <div class="input-group">
+            <label>API Key IA</label>
+            <input type="password" id="cfg-aiKey" placeholder="API Key da IA">
+          </div>
+          <div class="input-group">
+            <label>Modelo</label>
+            <select id="cfg-aiModel">
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+              <option value="gpt-4-turbo">GPT-4 Turbo</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              <option value="claude-sonnet-4-20250514">Claude Sonnet</option>
+              <option value="claude-haiku-4-20250506">Claude Haiku</option>
+              <option value="deepseek-chat">DeepSeek Chat</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Base URL</label>
+            <input type="text" id="cfg-aiBaseURL" placeholder="https://api.openai.com/v1">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F4C9; Parametros de Trading</span>
+          </div>
+          <div class="input-group">
+            <label>Valor por Trade (USDT)</label>
+            <input type="number" id="cfg-tradeAmount" placeholder="10" step="1" min="1">
+          </div>
+          <div class="input-group">
+            <label>Stop Loss (%)</label>
+            <input type="number" id="cfg-stopLoss" placeholder="2" step="0.1" min="0">
+          </div>
+          <div class="input-group">
+            <label>Take Profit (%)</label>
+            <input type="number" id="cfg-takeProfit" placeholder="3" step="0.1" min="0">
+          </div>
+          <div class="input-group">
+            <label>Confianca Minima (%)</label>
+            <input type="number" id="cfg-minConfidence" placeholder="70" step="1" min="0" max="100">
+          </div>
+          <div class="input-group">
+            <label>Intervalo do Bot (segundos)</label>
+            <input type="number" id="cfg-botInterval" placeholder="60" step="1" min="5">
+          </div>
+          <div class="input-group">
+            <label>Moedas no Scanner (top N)</label>
+            <input type="number" id="cfg-topCoins" placeholder="30" step="1" min="1" max="100">
+          </div>
+          <div class="input-group">
+            <label>Timeout Lateralizacao (horas)</label>
+            <input type="number" id="cfg-lateralTimeout" placeholder="24" step="1" min="1" max="168">
+          </div>
+          <div class="input-group">
+            <label>Snapshot Carteira (minutos)</label>
+            <input type="number" id="cfg-snapshotInterval" placeholder="30" step="5" min="5" max="1440">
+          </div>
+          <div class="input-group">
+            <label>Intervalo de Candles</label>
+            <select id="cfg-interval">
+              <option value="1m">1 minuto</option>
+              <option value="5m">5 minutos</option>
+              <option value="15m" selected>15 minutos</option>
+              <option value="1h">1 hora</option>
+              <option value="4h">4 horas</option>
+              <option value="1d">1 dia</option>
+            </select>
+          </div>
+          <div class="toggle-wrapper">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Auto-Trade</div>
+              <div style="font-size:11px;color:var(--text-muted);">Habilitar execucao automatica</div>
+            </div>
+            <div class="toggle-switch" id="cfg-autoTrade" onclick="toggleConfigSwitch('cfg-autoTrade')"></div>
+          </div>
+        </div>
+
+        <div></div>
+      </div>
+      <div class="config-actions">
+        <button class="btn btn-accent btn-lg" onclick="doSaveConfig()">&#x1F4BE; Salvar Configuracoes</button>
+      </div>
+    </div>
+
+    <!-- ==================== LOG TAB ==================== -->
+    <div id="log-panel" class="tab-panel" data-tab-panel="log">
+      <div class="card-header" style="margin-bottom:10px;">
+        <span class="card-title">&#x1F4CB; Registro de Atividades</span>
+        <button class="btn btn-outline btn-sm" onclick="clearLogs()">&#x1F5D1; Limpar</button>
+      </div>
+      <div id="log-container"></div>
+    </div>
+
+    <!-- ==================== HELP/MANUAL TAB ==================== -->
+    <div id="help-panel" class="tab-panel" data-tab-panel="help">
+      <div class="help-container">
+
+        <div style="margin-bottom:24px;">
+          <h1 style="font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px;">&#x1F4D6; Manual do Binance Recovery Bot</h1>
+          <p style="color:var(--text-muted);font-size:13px;">Guia completo de todas as funcionalidades, parametros e estrategias do sistema.</p>
+        </div>
+
+        <!-- ===== VISAO GERAL ===== -->
+        <div class="help-section open">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F3AF; Visao Geral do Sistema
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>O <strong>Binance Recovery Bot</strong> e um robo de trading automatizado que identifica as <strong>N melhores moedas em recuperacao</strong> (configuravel, padrao 30) nas ultimas 24 horas no mercado da Binance, analisa indicadores tecnicos e utiliza Inteligencia Artificial para recomendar operacoes de compra e venda.</p>
+
+            <div class="help-tip">&#x1F4A1; "Recuperacao" significa moedas que tiveram valorizacao positiva nas ultimas 24h, com volume significativo (acima de 1 milhao USDT), indicando que o mercado esta comprando ativamente.</div>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Fluxo de operacao:</p>
+            <div class="help-flow">
+              <span class="help-flow-step">&#x1F50D; Scan do Mercado</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x1F3C6; Top N Recovery</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x1F4CA; Indicadores Tecnicos</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x1F916; Analise IA</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x1F4B0; Trade</span>
+            </div>
+
+            <table class="help-table" style="margin-top:16px;">
+              <tr><th>Funcionalidade</th><th>Descricao</th></tr>
+              <tr><td><strong>Scanner</strong></td><td>Escaneia todos os pares USDT na Binance e seleciona os N melhores com maior variacao positiva em 24h (N configuravel em Configuracoes)</td></tr>
+              <tr><td><strong>Grafico Candlestick</strong></td><td>Exibe os ultimos 50 candles da moeda selecionada com Open, High, Low, Close e Volume</td></tr>
+              <tr><td><strong>Indicadores Tecnicos</strong></td><td>RSI, MACD, SMA, EMA, Bollinger Bands, ATR - calculados automaticamente</td></tr>
+              <tr><td><strong>Analise IA</strong></td><td>Envia indicadores para um LLM (GPT, Claude, DeepSeek) que retorna sinal, confianca e precos sugeridos</td></tr>
+              <tr><td><strong>Trading Manual</strong></td><td>Compra e venda a mercado com confirmacao</td></tr>
+              <tr><td><strong>Bot Automatico</strong></td><td>Escaneia, analisa e executa trades automaticamente em intervalos configuraveis</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- ===== ABA SCANNER ===== -->
+        <div class="help-section open">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F50D; Aba Scanner
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>A aba Scanner e a tela principal. Ela se divide em duas areas:</p>
+
+            <p style="margin-top:12px;font-weight:600;">&#x1F4CB; Painel Esquerdo &mdash; Tabela Top N</p>
+            <p>Mostra as N melhores moedas com maior recuperacao (variacao positiva) nas ultimas 24 horas. O valor de N e configuravel na aba Configuracoes (padrao: 30).</p>
+
+            <table class="help-table">
+              <tr><th>Coluna</th><th>Significado</th></tr>
+              <tr><td><strong>#</strong></td><td>Ranking de recuperacao (1 = maior alta)</td></tr>
+              <tr><td><strong>Moeda</strong></td><td>Par de trading (ex: BTCUSDT, ETHUSDT)</td></tr>
+              <tr><td><strong>Preco</strong></td><td>Ultimo preco negociado</td></tr>
+              <tr><td><strong>Variacao 24h</strong></td><td>Variacao percentual do preco nas ultimas 24 horas. Valores verdes indicam alta</td></tr>
+              <tr><td><strong>Volume</strong></td><td>Volume de negociacao em USDT nas ultimas 24h. Filtro minimo: 1M USDT</td></tr>
+              <tr><td><strong>Acao</strong></td><td>Botao para selecionar a moeda e carregar seus dados no painel direito</td></tr>
+            </table>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F504; Botao "Scan Now"</div>
+              <div class="help-param-desc">Forca um scan imediato do mercado. O scan automatico ocorre a cada <strong>60 segundos</strong>. O scan consulta o endpoint <strong>/api/v3/ticker/24hr</strong> da Binance, filtra pares USDT com volume &gt; 1M, remove os que estao em queda, e ordena por variacao decrescente.</div>
+            </div>
+
+            <p style="margin-top:16px;font-weight:600;">&#x1F4C8; Painel Direito &mdash; Detalhes da Moeda</p>
+            <p>Ao clicar em uma moeda na tabela, o painel direito carrega:</p>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F5BC; Grafico Candlestick</div>
+              <div class="help-param-desc">
+                Exibe os ultimos <strong>50 candles</strong> da moeda no intervalo configurado (padrao: 1h).
+                Cada candle mostra: <strong>Abertura (Open)</strong>, <strong>Maxima (High)</strong>, <strong>Minima (Low)</strong>, <strong>Fechamento (Close)</strong>.
+                <br>&#x2022; Candles <strong style="color:var(--green);">verdes</strong>: preco subiu (Close &gt; Open)
+                <br>&#x2022; Candles <strong style="color:var(--red);">vermelhos</strong>: preco caiu (Close &lt; Open)
+                <br>&#x2022; A <strong>sombra/pavio</strong> (linha fina) mostra a maxima e minima do periodo
+                <br>&#x2022; Passe o mouse sobre o grafico para ver detalhes do candle
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F4CA; Indicadores Tecnicos</div>
+              <div class="help-param-desc">Calculados automaticamente a partir dos candles carregados. Veja a secao "Indicadores Tecnicos" abaixo para detalhes de cada um.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F916; Sinal da IA</div>
+              <div class="help-param-desc">
+                Apos clicar em <strong>"Analisar com IA"</strong>, o sistema envia os indicadores e ultimos candles para o modelo de IA configurado.
+                A IA retorna: <strong>Sinal</strong> (COMPRA FORTE / COMPRA / MANTER / VENDA / VENDA FORTE), <strong>Confianca</strong> (0-100%), <strong>Reasoning</strong> (explicacao), e precos sugeridos de <strong>Entrada</strong>, <strong>Stop Loss</strong> e <strong>Take Profit</strong>.
+                <br><br>Se nenhuma IA estiver configurada, o sistema usa o <strong>Score Tecnico</strong> (baseado apenas nos indicadores) como fallback.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== INDICADORES TECNICOS ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4CA; Indicadores Tecnicos (Detalhado)
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>Todos os indicadores sao calculados localmente a partir dos dados de candles da Binance.</p>
+
+            <div class="help-param">
+              <div class="help-param-name">RSI (Relative Strength Index) &mdash; Periodo: 14</div>
+              <div class="help-param-desc">
+                Mede a forca relativa dos movimentos de alta vs baixa. Oscila de 0 a 100.
+                <br>&#x2022; <strong style="color:var(--green);">RSI &lt; 30</strong>: Sobrevendido &mdash; possivel oportunidade de <strong>compra</strong>
+                <br>&#x2022; <strong style="color:var(--red);">RSI &gt; 70</strong>: Sobrecomprado &mdash; possivel oportunidade de <strong>venda</strong>
+                <br>&#x2022; RSI entre 30-70: Zona neutra
+                <br><br><strong>Score:</strong> RSI &lt; 30 = +30pts | RSI &lt; 45 = +10pts | RSI &gt; 70 = -30pts | RSI &gt; 55 = -10pts
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">MACD (Moving Average Convergence Divergence)</div>
+              <div class="help-param-desc">
+                Calculado com EMA de 12 e 26 periodos. A linha de sinal usa EMA de 9 periodos.
+                <br>&#x2022; <strong>MACD</strong>: Diferenca entre EMA(12) e EMA(26)
+                <br>&#x2022; <strong>Signal</strong>: EMA(9) do MACD
+                <br>&#x2022; <strong>Histograma</strong>: MACD - Signal
+                <br><br>&#x2022; <strong style="color:var(--green);">Histograma &gt; 0</strong>: Tendencia de <strong>alta</strong> (+15pts)
+                <br>&#x2022; <strong style="color:var(--red);">Histograma &lt; 0</strong>: Tendencia de <strong>baixa</strong> (-15pts)
+                <br>&#x2022; MACD cruza acima do Signal: Sinal de <strong>compra</strong> (+10pts)
+                <br>&#x2022; MACD cruza abaixo do Signal: Sinal de <strong>venda</strong> (-10pts)
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">SMA 20 e SMA 50 (Simple Moving Average)</div>
+              <div class="help-param-desc">
+                Medias moveis simples dos ultimos 20 e 50 periodos de fechamento.
+                <br>&#x2022; <strong style="color:var(--green);">Preco &gt; SMA20</strong>: Tendencia de curto prazo em alta (+10pts)
+                <br>&#x2022; <strong style="color:var(--green);">SMA20 &gt; SMA50</strong>: "Golden Cross" &mdash; tendencia de medio prazo em alta (+15pts)
+                <br>&#x2022; <strong style="color:var(--red);">SMA20 &lt; SMA50</strong>: "Death Cross" &mdash; tendencia de medio prazo em baixa (-15pts)
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">EMA 12 e EMA 26 (Exponential Moving Average)</div>
+              <div class="help-param-desc">
+                Medias moveis exponenciais que dao mais peso aos precos recentes. A EMA de 12 periodos reage mais rapido que a de 26.
+                Usadas internamente no calculo do MACD.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Bollinger Bands (Bandas de Bollinger) &mdash; Periodo: 20, Desvio: 2</div>
+              <div class="help-param-desc">
+                Tres linhas baseadas na SMA(20) e desvio padrao:
+                <br>&#x2022; <strong>Upper</strong>: SMA20 + 2 x DesvPad
+                <br>&#x2022; <strong>Middle</strong>: SMA20
+                <br>&#x2022; <strong>Lower</strong>: SMA20 - 2 x DesvPad
+                <br><br>&#x2022; <strong style="color:var(--green);">Preco &le; Lower</strong>: Ativo pode estar sobrevendido, possivel "bounce" (+20pts)
+                <br>&#x2022; <strong style="color:var(--red);">Preco &ge; Upper</strong>: Ativo pode estar sobrecomprado (-20pts)
+                <br>&#x2022; Bandas se estreitando = volatilidade baixa (possivel rompimento iminente)
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">ATR (Average True Range) &mdash; Periodo: 14</div>
+              <div class="help-param-desc">
+                Mede a volatilidade media do ativo. Quanto maior o ATR, mais volatil o ativo.
+                <br>&#x2022; Util para definir <strong>Stop Loss</strong>: tipicamente 1.5x a 2x ATR abaixo do preco de entrada
+                <br>&#x2022; Nao indica direcao, apenas a magnitude dos movimentos de preco
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F4AF; Score Tecnico (Tech Score)</div>
+              <div class="help-param-desc">
+                Pontuacao composta de -100 a +100 calculada somando os pontos de cada indicador:
+                <br><br>
+                <table class="help-table">
+                  <tr><th>Indicador</th><th>Condicao</th><th>Pontos</th></tr>
+                  <tr><td>RSI &lt; 30</td><td>Sobrevendido</td><td style="color:var(--green);">+30</td></tr>
+                  <tr><td>RSI &lt; 45</td><td>Tendencia de compra</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>RSI &gt; 70</td><td>Sobrecomprado</td><td style="color:var(--red);">-30</td></tr>
+                  <tr><td>RSI &gt; 55</td><td>Tendencia de venda</td><td style="color:var(--red);">-10</td></tr>
+                  <tr><td>Histograma &gt; 0</td><td>MACD positivo</td><td style="color:var(--green);">+15</td></tr>
+                  <tr><td>Histograma &lt; 0</td><td>MACD negativo</td><td style="color:var(--red);">-15</td></tr>
+                  <tr><td>MACD &gt; Signal</td><td>Cruzamento alta</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>MACD &lt; Signal</td><td>Cruzamento baixa</td><td style="color:var(--red);">-10</td></tr>
+                  <tr><td>Preco &gt; SMA20</td><td>Acima da media</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>SMA20 &gt; SMA50</td><td>Golden Cross</td><td style="color:var(--green);">+15</td></tr>
+                  <tr><td>SMA20 &lt; SMA50</td><td>Death Cross</td><td style="color:var(--red);">-15</td></tr>
+                  <tr><td>Preco &le; Boll Lower</td><td>Bounce possivel</td><td style="color:var(--green);">+20</td></tr>
+                  <tr><td>Preco &ge; Boll Upper</td><td>Topo possivel</td><td style="color:var(--red);">-20</td></tr>
+                </table>
+                <br>&#x2022; Score &gt; +60: <strong>COMPRA FORTE</strong> | &gt; +40: <strong>COMPRA</strong>
+                <br>&#x2022; Score &lt; -60: <strong>VENDA FORTE</strong> | &lt; -40: <strong>VENDA</strong>
+                <br>&#x2022; Entre -40 e +40: <strong>MANTER</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== EXEMPLOS PRATICOS ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4D6; Exemplos Praticos: Por que Comprar ou Vender?
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>Abaixo estao cenarios reais que explicam a logica por tras de cada decisao do bot.</p>
+
+            <!-- EXEMPLO 1: COMPRA FORTE -->
+            <div class="help-param" style="border-left:3px solid var(--green);padding-left:16px;margin-top:16px;">
+              <div class="help-param-name" style="color:var(--green);font-size:15px;">&#x2705; Exemplo 1: COMPRA FORTE (Score +70)</div>
+              <div class="help-param-desc">
+                <strong>Cenario:</strong> BTCUSDT caiu 15% nos ultimos 3 dias, mas comecou a se recuperar nas ultimas horas.
+                <br><br>
+                <table class="help-table">
+                  <tr><th>Indicador</th><th>Valor</th><th>Interpretacao</th><th>Pts</th></tr>
+                  <tr><td>RSI</td><td style="color:var(--green);">24.5</td><td>Muito sobrevendido &mdash; o mercado vendeu demais, provavel correcao para cima</td><td style="color:var(--green);">+30</td></tr>
+                  <tr><td>MACD Hist</td><td style="color:var(--green);">+0.5</td><td>Histograma virou positivo &mdash; forca compradora crescendo</td><td style="color:var(--green);">+15</td></tr>
+                  <tr><td>MACD vs Signal</td><td style="color:var(--green);">Acima</td><td>MACD cruzou acima do Signal &mdash; "cruzamento de alta"</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>Preco vs SMA20</td><td style="color:var(--red);">Abaixo</td><td>Preco ainda abaixo da media &mdash; esperado apos queda forte</td><td style="color:var(--red);">-10</td></tr>
+                  <tr><td>SMA20 vs SMA50</td><td style="color:var(--red);">Abaixo</td><td>Media curta abaixo da longa &mdash; tendencia macro ainda de baixa</td><td style="color:var(--red);">-15</td></tr>
+                  <tr><td>Bollinger</td><td style="color:var(--green);">Na banda inferior</td><td>Preco tocou Bollinger inferior &mdash; forte indicacao de "bounce" (rebote)</td><td style="color:var(--green);">+20</td></tr>
+                </table>
+                <br>
+                <strong>Total: +50 pontos</strong> &rarr; Sinal: <strong style="color:var(--green);">COMPRA</strong>
+                <br><br>
+                <div class="help-tip">
+                  <strong>&#x1F4A1; Por que comprar quando tudo parece ruim?</strong><br>
+                  RSI sobrevendido (&lt;30) significa que o ativo caiu muito rapido. Historicamente, esses niveis extremos tendem a reverter.
+                  Quando o MACD vira positivo ao mesmo tempo, confirma que os compradores estao voltando. O toque na Bollinger inferior
+                  reforca: o preco esta estatisticamente "barato" em relacao a media recente. E um ponto de alta probabilidade de bounce.
+                </div>
+              </div>
+            </div>
+
+            <!-- EXEMPLO 2: VENDA FORTE -->
+            <div class="help-param" style="border-left:3px solid var(--red);padding-left:16px;margin-top:20px;">
+              <div class="help-param-name" style="color:var(--red);font-size:15px;">&#x1F534; Exemplo 2: VENDA FORTE (Score -65)</div>
+              <div class="help-param-desc">
+                <strong>Cenario:</strong> OMUSDT subiu 45% em 24h. O bot detecta esse cenario:
+                <br><br>
+                <table class="help-table">
+                  <tr><th>Indicador</th><th>Valor</th><th>Interpretacao</th><th>Pts</th></tr>
+                  <tr><td>RSI</td><td style="color:var(--red);">82.3</td><td>Muito sobrecomprado &mdash; subiu rapido demais, provavel correcao para baixo</td><td style="color:var(--red);">-30</td></tr>
+                  <tr><td>MACD Hist</td><td style="color:var(--green);">+2.1</td><td>Ainda positivo (forca residual do pump)</td><td style="color:var(--green);">+15</td></tr>
+                  <tr><td>MACD vs Signal</td><td style="color:var(--green);">Acima</td><td>MACD ainda acima do signal</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>Preco vs SMA20</td><td style="color:var(--green);">Acima</td><td>Preco muito acima da media</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>SMA20 vs SMA50</td><td style="color:var(--red);">Abaixo</td><td>Pump recente; SMA20 nao alcancou a SMA50 ainda</td><td style="color:var(--red);">-15</td></tr>
+                  <tr><td>Bollinger</td><td style="color:var(--red);">Na banda superior</td><td>Preco tocou/ultrapassou Bollinger superior &mdash; estatisticamente "caro"</td><td style="color:var(--red);">-20</td></tr>
+                </table>
+                <br>
+                <strong>Total: -30 pontos</strong> &rarr; Neste caso seria <strong>HOLD</strong> (entre -40 e +40).
+                <br>Mas se SMA20&lt;SMA50 e MACD comecar a cair, o score piora para <strong style="color:var(--red);">-50 a -65</strong> &rarr; VENDA FORTE.
+                <br><br>
+                <div class="help-warning">
+                  <strong>&#x26A0;&#xFE0F; Por que vender uma moeda que subiu muito?</strong><br>
+                  Subidas de 40-50% em um dia sao frequentemente seguidas de correcoes de 15-30%.
+                  RSI acima de 80 indica que quase todos os movimentos recentes foram de alta &mdash; nao ha mais compradores faceis.
+                  O preco na Bollinger superior significa que esta 2 desvios acima da media. Estatisticamente, tende a voltar para a media.
+                  O bot vende para <strong>proteger o lucro</strong> antes que a correcao aconteca.
+                </div>
+              </div>
+            </div>
+
+            <!-- EXEMPLO 3: HOLD -->
+            <div class="help-param" style="border-left:3px solid var(--text-muted);padding-left:16px;margin-top:20px;">
+              <div class="help-param-name" style="color:var(--accent);font-size:15px;">&#x23F8;&#xFE0F; Exemplo 3: HOLD / MANTER (Score -15)</div>
+              <div class="help-param-desc">
+                <strong>Cenario:</strong> ETHUSDT em consolidacao lateral, sem tendencia clara.
+                <br><br>
+                <table class="help-table">
+                  <tr><th>Indicador</th><th>Valor</th><th>Interpretacao</th><th>Pts</th></tr>
+                  <tr><td>RSI</td><td>48.2</td><td>Neutro &mdash; sem sobrecompra nem sobrevenda</td><td>0</td></tr>
+                  <tr><td>MACD Hist</td><td style="color:var(--red);">-0.3</td><td>Levemente negativo</td><td style="color:var(--red);">-15</td></tr>
+                  <tr><td>MACD vs Signal</td><td style="color:var(--red);">Abaixo</td><td>Leve pressao vendedora</td><td style="color:var(--red);">-10</td></tr>
+                  <tr><td>Preco vs SMA20</td><td style="color:var(--green);">Acima</td><td>Preco proximo a media, levemente acima</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>SMA20 vs SMA50</td><td style="color:var(--green);">Acima</td><td>Tendencia de medio prazo em alta</td><td style="color:var(--green);">+15</td></tr>
+                  <tr><td>Bollinger</td><td>Entre bandas</td><td>Preco no meio &mdash; sem extremos</td><td>0</td></tr>
+                </table>
+                <br>
+                <strong>Total: 0 pontos</strong> &rarr; Sinal: <strong style="color:var(--accent);">HOLD</strong>
+                <br><br>
+                <div class="help-tip">
+                  <strong>&#x1F4A1; Quando o bot nao faz nada?</strong><br>
+                  Scores entre -40 e +40 indicam que nao ha consenso claro entre os indicadores.
+                  Operar nessa zona tem alta probabilidade de ser "50/50" &mdash; o bot prefere <strong>preservar capital</strong>
+                  e esperar um sinal mais forte. Paciencia e uma das melhores estrategias de trading.
+                </div>
+              </div>
+            </div>
+
+            <!-- EXEMPLO 4: COMPRA em recuperacao -->
+            <div class="help-param" style="border-left:3px solid #00bcd4;padding-left:16px;margin-top:20px;">
+              <div class="help-param-name" style="color:#00bcd4;font-size:15px;">&#x1F4C8; Exemplo 4: Moeda em Recuperacao (O Cenario Ideal)</div>
+              <div class="help-param-desc">
+                <strong>Cenario:</strong> SOLUSDT caiu 25% em 3 dias, mas nas ultimas 6h subiu 8%. O scanner detectou como "moeda em recuperacao".
+                <br><br>
+                <table class="help-table">
+                  <tr><th>Indicador</th><th>Valor</th><th>Interpretacao</th><th>Pts</th></tr>
+                  <tr><td>RSI</td><td style="color:var(--green);">35.4</td><td>Proximo de sobrevendido &mdash; ainda tem espaco para subir</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>MACD Hist</td><td style="color:var(--green);">+0.8</td><td>Histograma acabou de virar positivo &mdash; momentum de alta</td><td style="color:var(--green);">+15</td></tr>
+                  <tr><td>MACD vs Signal</td><td style="color:var(--green);">Acima</td><td>Cruzamento de alta confirmado</td><td style="color:var(--green);">+10</td></tr>
+                  <tr><td>Preco vs SMA20</td><td style="color:var(--red);">Abaixo</td><td>Ainda abaixo, mas se aproximando (sinal de que vai cruzar)</td><td style="color:var(--red);">-10</td></tr>
+                  <tr><td>SMA20 vs SMA50</td><td style="color:var(--red);">Abaixo</td><td>Tendencia macro ainda bearish</td><td style="color:var(--red);">-15</td></tr>
+                  <tr><td>Bollinger</td><td style="color:var(--green);">Proximo ao Lower</td><td>Preco na regiao inferior &mdash; possivel bounce</td><td style="color:var(--green);">+20</td></tr>
+                </table>
+                <br>
+                <strong>Total: +30 pontos</strong> &rarr; Sinal: <strong style="color:var(--accent);">HOLD</strong> (proximo de COMPRA)
+                <br>Se o RSI cair para &lt;30, o score sobe para <strong style="color:var(--green);">+50 &rarr; COMPRA</strong>.
+                <br><br>
+                <div class="help-tip">
+                  <strong>&#x1F4A1; Este e o cenario que o bot procura!</strong><br>
+                  O Scanner busca moedas com <strong>variacao positiva em 24h</strong> (recuperacao). A ideia e:
+                  <br>1. A moeda caiu bastante (dias anteriores)
+                  <br>2. Comecou a se recuperar (variacao +% nas ultimas 24h)
+                  <br>3. Os indicadores confirmam que a reversao esta acontecendo (RSI baixo + MACD cruzando + Bollinger inferior)
+                  <br>4. O bot compra na confirmacao e coloca stop loss para proteger
+                  <br><br>
+                  A <strong>estrategia ideal</strong> e: comprar quando os indicadores confirmam a reversao (nao antes), e vender quando RSI fica sobrecomprado (&gt;70).
+                </div>
+              </div>
+            </div>
+
+            <!-- RESUMO VISUAL -->
+            <div style="margin-top:24px;padding:16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:14px;font-weight:700;color:var(--accent);margin-bottom:12px;">&#x1F3AF; Resumo: Quando o Bot Age</div>
+              <table class="help-table" style="width:100%;">
+                <tr>
+                  <th>Score</th>
+                  <th>Sinal</th>
+                  <th>Acao do Bot</th>
+                  <th>Logica</th>
+                </tr>
+                <tr>
+                  <td style="color:var(--green);font-weight:700;">&gt; +60</td>
+                  <td style="color:var(--green);">COMPRA FORTE</td>
+                  <td>Compra automatica</td>
+                  <td>Multiplos indicadores confirmam alta &mdash; confianca elevada</td>
+                </tr>
+                <tr>
+                  <td style="color:var(--green);">+40 a +60</td>
+                  <td style="color:var(--green);">COMPRA</td>
+                  <td>Compra automatica</td>
+                  <td>Maioria dos indicadores aponta para alta</td>
+                </tr>
+                <tr>
+                  <td>-40 a +40</td>
+                  <td style="color:var(--accent);">HOLD</td>
+                  <td>Nao faz nada</td>
+                  <td>Sinais mistos &mdash; melhor esperar clareza</td>
+                </tr>
+                <tr>
+                  <td style="color:var(--red);">-60 a -40</td>
+                  <td style="color:var(--red);">VENDA</td>
+                  <td>Venda automatica</td>
+                  <td>Maioria dos indicadores aponta para baixa</td>
+                </tr>
+                <tr>
+                  <td style="color:var(--red);font-weight:700;">&lt; -60</td>
+                  <td style="color:var(--red);">VENDA FORTE</td>
+                  <td>Venda automatica</td>
+                  <td>Multiplos indicadores confirmam queda &mdash; proteger capital</td>
+                </tr>
+              </table>
+              <br>
+              <div style="font-size:12px;color:var(--text-muted);">
+                &#x26A0;&#xFE0F; O Auto-Trade so executa se: (1) Bot estiver rodando, (2) Auto-Trade habilitado,
+                (3) Confianca &ge; minima configurada, e (4) O sinal for <strong>diferente</strong> do ultimo trade executado (protecao contra trades repetidos).
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ===== ABA TRADING ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4B9; Aba Trading
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>A aba Trading permite executar operacoes manuais e controlar o bot automatico.</p>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F4B5; Valor por Trade (USDT)</div>
+              <div class="help-param-desc">
+                Valor em USDT que sera usado em cada operacao. O sistema calcula automaticamente a quantidade do ativo dividindo o valor pelo preco atual.
+                <br><strong>Exemplo:</strong> Trade de 100 USDT com BTC a $50.000 = compra de 0.00200000 BTC
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name" style="color:var(--green);">&#x25B2; Botao COMPRAR</div>
+              <div class="help-param-desc">
+                Executa uma ordem de <strong>compra a mercado (MARKET)</strong> da moeda selecionada.
+                <br>&#x2022; Pede confirmacao antes de executar
+                <br>&#x2022; Requer moeda selecionada e preco valido
+                <br>&#x2022; A quantidade e calculada automaticamente: <strong>Valor USDT / Preco atual</strong>
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name" style="color:var(--red);">&#x25BC; Botao VENDER</div>
+              <div class="help-param-desc">
+                Executa uma ordem de <strong>venda a mercado (MARKET)</strong> da moeda selecionada.
+                <br>&#x2022; Pede confirmacao antes de executar
+                <br>&#x2022; Voce precisa ter saldo suficiente do ativo na sua conta Binance
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name" style="color:var(--blue);">&#x1F916; Bot Automatico</div>
+              <div class="help-param-desc">
+                O bot opera no seguinte ciclo automatico:
+                <br><br><strong>1.</strong> Escaneia o mercado (top N recovery)
+                <br><strong>2.</strong> Seleciona a moeda com melhor recuperacao (ou a que ja esta selecionada)
+                <br><strong>3.</strong> Calcula indicadores tecnicos
+                <br><strong>4.</strong> Envia para a IA analisar (ou usa score tecnico como fallback)
+                <br><strong>5.</strong> Se o sinal for de COMPRA ou VENDA e a confianca for &ge; minimo configurado:
+                <br>&nbsp;&nbsp;&nbsp;&nbsp;&#x2192; Executa a ordem automaticamente (se Auto-Trade estiver ativo)
+                <br><strong>6.</strong> Aguarda o intervalo configurado e repete
+              </div>
+            </div>
+
+            <div class="help-warning">&#x26A0; <strong>ATENCAO:</strong> O bot so executa trades automaticamente se o <strong>Auto-Trade</strong> estiver habilitado nas Configuracoes. Caso contrario, ele apenas analisa e exibe sinais. Use a <strong>Testnet</strong> para testar antes de operar com dinheiro real!</div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F4B0; Saldo</div>
+              <div class="help-param-desc">
+                Mostra o saldo da sua conta para o ativo base (ex: BTC) e o ativo cotado (ex: USDT), incluindo valores <strong>livres</strong> e <strong>bloqueados</strong> em ordens abertas.
+                <br>Atualizado automaticamente apos cada trade e ao testar a conexao.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F4C3; Historico de Trades</div>
+              <div class="help-param-desc">
+                Tabela com todas as ordens executadas na sessao atual, mostrando: data/hora, par, lado (compra/venda), preco, quantidade, sinal da IA que gerou o trade, confianca e ID da ordem na Binance.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CONFIGURACOES ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x2699;&#xFE0F; Configuracoes (Todos os Parametros)
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+
+            <p style="font-weight:600;color:var(--accent);font-size:14px;margin-bottom:10px;">&#x1F511; Binance API</p>
+
+            <div class="help-param">
+              <div class="help-param-name">API Key <span class="badge required">Obrigatorio</span></div>
+              <div class="help-param-desc">
+                Chave publica da sua conta Binance. Necessaria para consultar precos, saldos e executar ordens.
+                <br><strong>Como obter:</strong> Binance &gt; Configuracoes &gt; Gerenciamento de API &gt; Criar API
+                <br><strong>Permissoes necessarias:</strong> Leitura + Spot Trading (para executar ordens)
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Secret Key <span class="badge required">Obrigatorio</span></div>
+              <div class="help-param-desc">
+                Chave secreta que assina suas requisicoes. <strong>Nunca compartilhe esta chave.</strong>
+                <br>Mostrada apenas uma vez ao criar a API. Se perder, gere uma nova.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Testnet <span class="badge optional">Recomendado</span></div>
+              <div class="help-param-desc">
+                Quando ativado, o sistema usa a rede de teste da Binance (<strong>testnet.binance.vision</strong>) em vez da rede real.
+                <br>&#x2022; <strong>Ativado (padrao):</strong> Trades sao simulados, sem dinheiro real envolvido
+                <br>&#x2022; <strong>Desativado:</strong> Trades sao executados com dinheiro REAL na Binance
+                <br><br><strong>Dica:</strong> Sempre teste suas estrategias na Testnet primeiro. As chaves da Testnet sao diferentes das chaves de producao.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F50C; Testar Conexao</div>
+              <div class="help-param-desc">
+                Faz um ping no servidor da Binance para verificar se as credenciais estao corretas e o servidor esta acessivel. Se bem-sucedido, tambem consulta o saldo da conta.
+              </div>
+            </div>
+
+            <p style="font-weight:600;color:var(--accent);font-size:14px;margin:20px 0 10px;">&#x1F9E0; IA / LLM</p>
+
+            <div class="help-param">
+              <div class="help-param-name">API Key IA <span class="badge optional">Opcional</span></div>
+              <div class="help-param-desc">
+                Chave de API do provedor de IA escolhido (OpenAI, Anthropic, DeepSeek, etc).
+                <br>Se nao fornecida, o sistema usa o <strong>Score Tecnico</strong> como fallback para gerar sinais automaticamente.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Modelo</div>
+              <div class="help-param-desc">
+                Modelo de IA a ser usado para analise. Opcoes disponiveis:
+                <table class="help-table">
+                  <tr><th>Modelo</th><th>Provedor</th><th>Caracteristica</th></tr>
+                  <tr><td>GPT-4o</td><td>OpenAI</td><td>Mais inteligente, mais caro</td></tr>
+                  <tr><td>GPT-4o Mini</td><td>OpenAI</td><td>Equilibrio custo/qualidade (padrao)</td></tr>
+                  <tr><td>GPT-4 Turbo</td><td>OpenAI</td><td>Alta performance</td></tr>
+                  <tr><td>GPT-3.5 Turbo</td><td>OpenAI</td><td>Mais barato, menor qualidade</td></tr>
+                  <tr><td>Claude Sonnet</td><td>Anthropic</td><td>Analise detalhada</td></tr>
+                  <tr><td>Claude Haiku</td><td>Anthropic</td><td>Rapido e barato</td></tr>
+                  <tr><td>DeepSeek Chat</td><td>DeepSeek</td><td>Alternativa economica</td></tr>
+                  <tr><td>Custom</td><td>Qualquer</td><td>Modelo personalizado (preencha a Base URL)</td></tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Base URL <span class="badge optional">Opcional</span></div>
+              <div class="help-param-desc">
+                URL base do endpoint da API. Padrao: <strong>https://api.openai.com/v1</strong>
+                <br>Altere para usar provedores alternativos compativeis com a API OpenAI:
+                <br>&#x2022; Anthropic (via proxy): configure o proxy URL
+                <br>&#x2022; DeepSeek: <strong>https://api.deepseek.com/v1</strong>
+                <br>&#x2022; Ollama local: <strong>http://localhost:11434/v1</strong>
+                <br>&#x2022; LM Studio: <strong>http://localhost:1234/v1</strong>
+              </div>
+            </div>
+
+            <p style="font-weight:600;color:var(--accent);font-size:14px;margin:20px 0 10px;">&#x1F4C9; Parametros de Trading</p>
+
+            <div class="help-param">
+              <div class="help-param-name">Valor por Trade (USDT)</div>
+              <div class="help-param-desc">
+                Quantidade em USDT usada em cada operacao de compra ou venda.
+                <br><strong>Padrao:</strong> 100 USDT
+                <br><strong>Minimo recomendado:</strong> 10 USDT (limite minimo da maioria dos pares na Binance)
+                <br>Valores menores reduzem risco mas tambem o lucro potencial.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Stop Loss (%) <span class="badge danger">Risco</span></div>
+              <div class="help-param-desc">
+                Percentual maximo de perda aceito antes de sugerir saida da posicao.
+                <br><strong>Padrao:</strong> 2%
+                <br><strong>Calculo:</strong> Preco de entrada x (1 - StopLoss/100)
+                <br><strong>Exemplo:</strong> Entrada em $100 com SL 2% = Stop Loss em $98
+                <br><br>&#x2022; Valores menores (1-2%): Mais conservador, para menos do que o devido
+                <br>&#x2022; Valores maiores (3-5%): Mais espaco para o ativo respirar, mas maior risco
+                <br><br><strong>Dica:</strong> O ATR pode ajudar a calibrar &mdash; idealmente o SL deve ser 1.5x a 2x o ATR.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Take Profit (%)</div>
+              <div class="help-param-desc">
+                Percentual de lucro alvo para sugerir saida da posicao.
+                <br><strong>Padrao:</strong> 4%
+                <br><strong>Calculo:</strong> Preco de entrada x (1 + TakeProfit/100)
+                <br><strong>Exemplo:</strong> Entrada em $100 com TP 4% = Take Profit em $104
+                <br><br><strong>Regra de ouro:</strong> Mantenha uma relacao <strong>Risco:Retorno de pelo menos 1:2</strong>.
+                <br>Se seu Stop Loss e 2%, o Take Profit deve ser pelo menos 4%.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Confianca Minima (%)</div>
+              <div class="help-param-desc">
+                Nivel minimo de confianca exigido da IA para o bot executar um trade automatico.
+                <br><strong>Padrao:</strong> 70%
+                <br>&#x2022; <strong>50-60%:</strong> Agressivo &mdash; mais trades, mas mais sinais falsos
+                <br>&#x2022; <strong>70-80%:</strong> Moderado &mdash; equilibrio (recomendado)
+                <br>&#x2022; <strong>85-100%:</strong> Conservador &mdash; poucos trades, apenas sinais muito fortes
+                <br><br>Se a IA retornar confianca abaixo deste valor, o bot registra no log mas <strong>nao executa</strong> o trade.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Intervalo do Bot (segundos)</div>
+              <div class="help-param-desc">
+                Tempo em segundos entre cada ciclo de analise do bot automatico.
+                <br><strong>Padrao:</strong> 300 segundos (5 minutos)
+                <br>&#x2022; <strong>30-60s:</strong> Muito frequente &mdash; consome mais API, bom para scalping
+                <br>&#x2022; <strong>300s (5min):</strong> Moderado (recomendado)
+                <br>&#x2022; <strong>900-3600s:</strong> Pouco frequente &mdash; para swing trading
+                <br><br><strong>Atencao:</strong> Intervalos muito curtos podem esgotar o rate limit da API da Binance ou da IA.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Intervalo de Candles</div>
+              <div class="help-param-desc">
+                Periodo de tempo de cada candle no grafico e nos calculos de indicadores.
+                <table class="help-table">
+                  <tr><th>Valor</th><th>Uso recomendado</th></tr>
+                  <tr><td><strong>1m, 5m</strong></td><td>Scalping &mdash; operacoes rapidas de minutos</td></tr>
+                  <tr><td><strong>15m</strong></td><td>Day trading intradiario (padrao)</td></tr>
+                  <tr><td><strong>1h</strong></td><td>Day trading / Swing trading</td></tr>
+                  <tr><td><strong>4h</strong></td><td>Swing trading &mdash; operacoes de dias</td></tr>
+                  <tr><td><strong>1d</strong></td><td>Position trading &mdash; operacoes de semanas</td></tr>
+                </table>
+                <br><strong>Dica:</strong> Intervalos maiores geram sinais mais confiaveis mas menos frequentes.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Auto-Trade <span class="badge danger">Cuidado</span></div>
+              <div class="help-param-desc">
+                Quando ativado, o bot executa ordens de compra e venda automaticamente baseado nos sinais da IA.
+                <br>&#x2022; <strong>Desativado (padrao):</strong> O bot apenas analisa e mostra sinais &mdash; voce decide manualmente
+                <br>&#x2022; <strong>Ativado:</strong> O bot executa trades reais se o sinal e confianca atingirem os criterios
+              </div>
+            </div>
+
+            <div class="help-warning">&#x26A0; <strong>RISCO:</strong> Com Auto-Trade ativado e Testnet desativado, o bot executara ordens com <strong>dinheiro real</strong>. Use por sua conta e risco. Sempre comece com valores pequenos e monitore ativamente.</div>
+
+            <div class="help-param">
+              <div class="help-param-name">&#x1F4BE; Salvar Configuracoes</div>
+              <div class="help-param-desc">
+                Salva todas as configuracoes no arquivo <strong>BinanceTrader.ini</strong> ao lado do executavel.
+                As configuracoes sao carregadas automaticamente ao iniciar o programa.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== TIMEOUT LATERALIZACAO ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x23F1; Timeout de Lateralizacao (Auto-venda)
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p><strong>O que e lateralizacao?</strong> E quando o preco de uma moeda fica "andando de lado", sem subir nem descer significativamente. O capital fica preso sem gerar retorno.</p>
+
+            <p><strong>Como funciona:</strong> O bot monitora todas as posicoes abertas (compras realizadas). Se uma posicao ficar aberta por mais de X horas e a variacao de preco for menor que 3%, o bot considera que a moeda esta lateral e vende automaticamente para liberar o capital.</p>
+
+            <table class="help-table">
+              <tr><th>Parametro</th><th>Padrao</th><th>Descricao</th></tr>
+              <tr><td><strong>Timeout Lateralizacao</strong></td><td>24 horas</td><td>Tempo maximo que uma posicao pode ficar aberta sem movimento significativo</td></tr>
+              <tr><td><strong>Limiar de variacao</strong></td><td>3%</td><td>Se a variacao absoluta do preco desde a compra for menor que 3%, considera-se lateral</td></tr>
+            </table>
+
+            <p><strong>Exemplo pratico:</strong></p>
+            <div class="help-param">
+              <div class="help-param-name">Cenario</div>
+              <div class="help-param-desc">
+                Voce comprou XRPUSDT a $0.50 as 10:00 de segunda-feira.<br>
+                Passaram-se 24 horas. O preco atual e $0.505 (variacao de +1%).<br>
+                Como 1% &lt; 3% e o tempo excedeu 24h, o bot detecta lateralizacao.<br>
+                <strong>Acao:</strong> O bot vende XRPUSDT automaticamente e registra no log: "LATERALIZACAO DETECTADA".<br>
+                O capital e liberado para ser investido em moedas com mais potencial.
+              </div>
+            </div>
+
+            <p><strong>Quando NAO vende:</strong></p>
+            <div class="help-param">
+              <div class="help-param-name">Moeda subiu ou caiu mais de 3%</div>
+              <div class="help-param-desc">
+                Se a moeda subiu 5% desde a compra, mesmo apos 24h, o bot NAO vende por lateralizacao (ela nao esta lateral, esta em lucro). Nesse caso, o bot aguarda o sinal normal de SELL da analise tecnica + IA.
+              </div>
+            </div>
+
+            <p><strong>Configuracao:</strong> Va em Configuracoes &rarr; "Timeout Lateralizacao (horas)" e ajuste o valor. O minimo e 1 hora, maximo 168 horas (1 semana).</p>
+
+            <div class="help-warning">&#x26A0; Esta funcao so atua em posicoes abertas pelo bot. Se o timeout for 0 ou negativo, a funcao e desativada.</div>
+          </div>
+        </div>
+
+        <!-- ===== ABA LOG ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4CB; Aba Log
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>Registro em tempo real de todas as atividades do sistema. Cada entrada tem um horario, uma tag colorida e a mensagem.</p>
+
+            <table class="help-table">
+              <tr><th>Tag</th><th>Cor</th><th>Significado</th></tr>
+              <tr><td><strong>BINANCE</strong></td><td style="color:var(--accent);">Amarelo</td><td>Comunicacao com a API da Binance (requisicoes, respostas)</td></tr>
+              <tr><td><strong>IA</strong></td><td style="color:var(--purple);">Roxo</td><td>Comunicacao com a API de IA (envio, resposta, erros)</td></tr>
+              <tr><td><strong>BOT</strong></td><td style="color:var(--blue);">Azul</td><td>Acoes do bot (scan, analise, sinais, decisoes)</td></tr>
+              <tr><td><strong>TRADE</strong></td><td style="color:var(--green);">Verde</td><td>Execucao de ordens (compra, venda, confirmacao)</td></tr>
+              <tr><td><strong>ERRO</strong></td><td style="color:var(--red);">Vermelho</td><td>Erros e falhas (conexao, API, validacao)</td></tr>
+              <tr><td><strong>SCANNER</strong></td><td style="color:var(--text-muted);">Cinza</td><td>Progresso do scanner de mercado</td></tr>
+              <tr><td><strong>SISTEMA</strong></td><td style="color:var(--text-muted);">Cinza</td><td>Eventos do sistema (inicio, config, interface)</td></tr>
+            </table>
+
+            <div class="help-tip">&#x1F4A1; O log e essencial para depurar problemas. Se algo nao funcionar, verifique as mensagens de ERRO no log. O log mantem ate 500 entradas na sessao.</div>
+          </div>
+        </div>
+
+        <!-- ===== SINAIS DA IA ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F916; Sinais da IA (Detalhado)
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>A IA recebe todos os indicadores tecnicos e os ultimos 20 candles, e retorna uma analise estruturada.</p>
+
+            <table class="help-table">
+              <tr><th>Sinal</th><th>Significado</th><th>Acao do Bot</th></tr>
+              <tr><td style="color:var(--green);font-weight:700;">COMPRA FORTE</td><td>Multiplos indicadores apontam alta com alta confianca</td><td>Compra automatica (se Auto-Trade ativo)</td></tr>
+              <tr><td style="color:var(--green);">COMPRA</td><td>Indicadores moderadamente positivos</td><td>Compra automatica (se Auto-Trade ativo)</td></tr>
+              <tr><td style="color:var(--accent);">MANTER</td><td>Sem sinal claro; mercado indeciso ou lateralizado</td><td>Nenhuma acao</td></tr>
+              <tr><td style="color:var(--red);">VENDA</td><td>Indicadores moderadamente negativos</td><td>Venda automatica (se Auto-Trade ativo)</td></tr>
+              <tr><td style="color:var(--red);font-weight:700;">VENDA FORTE</td><td>Multiplos indicadores apontam queda com alta confianca</td><td>Venda automatica (se Auto-Trade ativo)</td></tr>
+            </table>
+
+            <div class="help-param">
+              <div class="help-param-name">Confianca</div>
+              <div class="help-param-desc">
+                Percentual de 0 a 100 indicando o quao certo a IA esta sobre o sinal.
+                <br>&#x2022; <strong>0-40%:</strong> Sinal fraco &mdash; melhor ignorar
+                <br>&#x2022; <strong>40-70%:</strong> Sinal moderado &mdash; considere com cautela
+                <br>&#x2022; <strong>70-100%:</strong> Sinal forte &mdash; maior probabilidade de acerto
+                <br><br>O bot so executa trades quando a confianca &ge; <strong>Confianca Minima</strong> configurada.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Precos Sugeridos</div>
+              <div class="help-param-desc">
+                <br>&#x2022; <strong>Entrada:</strong> Preco ideal para abrir a posicao (geralmente proximo ao preco atual)
+                <br>&#x2022; <strong>Stop Loss:</strong> Preco para fechar a posicao com perda limitada
+                <br>&#x2022; <strong>Take Profit:</strong> Preco para fechar a posicao com lucro
+                <br><br>Estes sao <strong>sugestoes</strong> da IA. As ordens executadas sao sempre a <strong>mercado</strong> (MARKET) no preco atual.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Reasoning (Raciocinio)</div>
+              <div class="help-param-desc">
+                Explicacao textual da IA sobre porque chegou naquele sinal. Util para entender a logica e aprender analise tecnica.
+                <br>Quando nao ha IA configurada, mostra o Score Tecnico calculado localmente.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== DICAS E BOAS PRATICAS ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4A1; Dicas e Boas Praticas
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+
+            <div class="help-param">
+              <div class="help-param-name">1. Comece pela Testnet</div>
+              <div class="help-param-desc">Sempre teste suas configuracoes na Testnet antes de usar dinheiro real. Crie chaves API de teste em <strong>testnet.binance.vision</strong>.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">2. Comece com valores pequenos</div>
+              <div class="help-param-desc">Ao migrar para a conta real, comece com trades de 10-20 USDT para validar que tudo funciona corretamente antes de aumentar os valores.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">3. Monitore o bot ativamente</div>
+              <div class="help-param-desc">Mesmo com Auto-Trade, nao deixe o bot operando sem supervisao por longos periodos. Mercado cripto e extremamente volatil e eventos inesperados podem causar perdas rapidas.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">4. Respeite a relacao Risco:Retorno</div>
+              <div class="help-param-desc">Configure Take Profit como pelo menos <strong>2x o Stop Loss</strong>. Ex: SL 2% + TP 4%. Isso significa que voce pode errar 50% das vezes e ainda ter lucro.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">5. Diversifique</div>
+              <div class="help-param-desc">Nao coloque todo seu capital em uma unica moeda. O scanner mostra N opcoes (configuravel em Configuracoes, padrao 30) justamente para voce poder distribuir o risco.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">6. Confianca Minima alta no inicio</div>
+              <div class="help-param-desc">Comece com confianca minima de 80% e va ajustando conforme ganha experiencia com o sistema. Mais confianca = menos trades = menos risco.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">7. Verifique o Log</div>
+              <div class="help-param-desc">Se algo nao funcionar como esperado, a aba Log tem todas as informacoes necessarias para diagnosticar o problema.</div>
+            </div>
+
+            <div class="help-warning">&#x26A0; <strong>AVISO LEGAL:</strong> Este software e fornecido "como esta", sem garantias. Trading de criptomoedas envolve risco significativo de perda financeira. Voce e o unico responsavel pelas suas decisoes de investimento. Performance passada nao garante resultados futuros.</div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ==================== PERFORMANCE TAB ==================== -->
+    <div class="tab-panel perf-panel" data-tab-panel="performance">
+
+      <!-- Summary Cards -->
+      <div class="perf-cards-row">
+        <div class="perf-card">
+          <div class="perf-card-label">Total Trades</div>
+          <div class="perf-card-value neutral" id="perf-total-trades">0</div>
+        </div>
+        <div class="perf-card">
+          <div class="perf-card-label">Compras / Vendas</div>
+          <div class="perf-card-value neutral" id="perf-buy-sell">0 / 0</div>
+        </div>
+        <div class="perf-card">
+          <div class="perf-card-label">P&amp;L Total (USDT)</div>
+          <div class="perf-card-value neutral" id="perf-total-pnl">0.00</div>
+        </div>
+        <div class="perf-card">
+          <div class="perf-card-label">Win Rate</div>
+          <div class="perf-card-value neutral" id="perf-win-rate">--</div>
+        </div>
+        <div class="perf-card">
+          <div class="perf-card-label">Melhor Trade</div>
+          <div class="perf-card-value positive" id="perf-best-trade">--</div>
+        </div>
+        <div class="perf-card">
+          <div class="perf-card-label">Pior Trade</div>
+          <div class="perf-card-value negative" id="perf-worst-trade">--</div>
+        </div>
+      </div>
+
+      <!-- Equity Curve Chart -->
+      <div class="perf-chart-card">
+        <span class="card-title">Curva de Equity (P&amp;L acumulado)</span>
+        <canvas id="equity-canvas"></canvas>
+      </div>
+
+      <!-- Tables row -->
+      <div class="perf-tables-row">
+        <!-- Per-symbol stats -->
+        <div class="perf-table-card">
+          <span class="card-title">Performance por Moeda</span>
+          <table class="data-table">
+            <thead>
+              <tr><th>Moeda</th><th>Trades</th><th>P&amp;L (USDT)</th><th>Win Rate</th></tr>
+            </thead>
+            <tbody id="perf-symbol-tbody">
+              <tr><td colspan="4" class="placeholder-text">Sem dados.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Open positions -->
+        <div class="perf-table-card">
+          <span class="card-title">Posicoes Abertas (sem venda)</span>
+          <table class="data-table">
+            <thead>
+              <tr><th>Moeda</th><th>Preco Entrada</th><th>Quantidade</th><th>Valor (USDT)</th></tr>
+            </thead>
+            <tbody id="perf-open-tbody">
+              <tr><td colspan="4" class="placeholder-text">Nenhuma posicao aberta.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Paired trades table (full width) -->
+      <div class="perf-tables-row">
+        <div class="perf-table-card perf-full-width">
+          <span class="card-title">Trades Pareados (Entrada &rarr; Saida)</span>
+          <table class="data-table">
+            <thead>
+              <tr><th>Moeda</th><th>Entrada</th><th>Saida</th><th>Qtd</th><th>P&amp;L (USDT)</th><th>P&amp;L (%)</th><th>Duracao</th><th>Sinal</th></tr>
+            </thead>
+            <tbody id="perf-pairs-tbody">
+              <tr><td colspan="8" class="placeholder-text">Nenhum trade pareado.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ==================== WALLET TAB ==================== -->
+    <div class="tab-panel wallet-panel" data-tab-panel="wallet">
+
+      <div class="wallet-summary-card">
+        <div style="flex-shrink:0;">
+          <div class="wallet-total-label">Saldo Total Estimado</div>
+          <div class="wallet-total-value" id="wallet-total-usdt">$0.00</div>
+          <div class="wallet-total-sub" id="wallet-asset-count">0 ativos</div>
+        </div>
+        <div style="flex:1;margin:0 20px;min-width:0;">
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Evolucao do Portfolio</div>
+          <canvas id="wallet-mini-chart" style="width:100%;height:60px;display:block;"></canvas>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;">
+            <span style="font-size:10px;color:var(--text-muted);" id="wallet-chart-info">0 snapshots</span>
+            <span style="font-size:11px;font-weight:600;" id="wallet-chart-pnl">$0.00</span>
+          </div>
+        </div>
+        <div style="flex-shrink:0;">
+          <button class="btn btn-accent" id="wallet-refresh-btn" onclick="sendToDelphi('refreshWallet')">&#x1F504; Atualizar</button>
+        </div>
+      </div>
+
+      <div class="wallet-loading" id="wallet-loading" style="display:none;">Carregando saldos...</div>
+
+      <div class="wallet-table-card">
+        <span class="card-title">Ativos com Saldo</span>
+        <table class="data-table" id="wallet-table">
+          <thead>
+            <tr>
+              <th>Ativo</th>
+              <th>Livre</th>
+              <th>Bloqueado</th>
+              <th>Total</th>
+              <th>Valor em USDT</th>
+            </tr>
+          </thead>
+          <tbody id="wallet-tbody">
+            <tr><td colspan="5" class="placeholder-text">Clique em "Atualizar" para carregar a carteira.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<div class="footer">
+  <span>Binance Recovery Bot v1.0</span>
+  <span id="footer-clock" class="accent"></span>
+</div>
+
+<script>
+// =====================================================================
+// STATE
+// =====================================================================
+var state = {
+  selectedCoin: null,
+  coins: [],
+  candles: [],
+  indicators: {},
+  signal: null,
+  connected: false,
+  testnet: false,
+  botRunning: false,
+  autoTrade: false,
+  analyzing: false,
+  trades: [],
+  walletSnapshots: [],
+  balance: {
+    baseAsset: '--',
+    quoteAsset: 'USDT',
+    baseFree: '0.00',
+    baseLocked: '0.00',
+    quoteFree: '0.00',
+    quoteLocked: '0.00'
+  }
+};
+
+// =====================================================================
+// TAB NAVIGATION
+// =====================================================================
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var tabName = this.getAttribute('data-tab');
+    document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    var panel = document.querySelector('[data-tab-panel="' + tabName + '"]');
+    if (panel) {
+      panel.classList.add('active');
+    }
+    if (tabName === 'scanner' && state.candles.length > 0) {
+      setTimeout(function() { drawChart(); }, 50);
+    }
+    if (tabName === 'performance') {
+      setTimeout(function() { renderPerformance(); }, 50);
+    }
+    if (tabName === 'wallet') {
+      var wtbody = document.getElementById('wallet-tbody');
+      if (wtbody && wtbody.querySelector('.placeholder-text')) {
+        sendToDelphi('refreshWallet');
+      }
+      setTimeout(function() { drawWalletMiniChart(); }, 50);
+    }
+  });
+});
+
+// =====================================================================
+// HELP / MANUAL: collapsible sections
+// =====================================================================
+function toggleHelpSection(headerEl) {
+  var section = headerEl.parentElement;
+  section.classList.toggle('open');
+}
+
+// =====================================================================
+// COMMUNICATION: JS -> DELPHI
+// =====================================================================
+function sendToDelphi(action, data) {
+  try {
+    window.chrome.webview.postMessage(JSON.stringify({ action: action, data: data || {} }));
+  } catch (e) {
+    console.log('[sendToDelphi] Bridge not available:', action, data);
+  }
+}
+
+// =====================================================================
+// COMMUNICATION: DELPHI -> JS (via ExecuteScript with JS object literal)
+// =====================================================================
+function handleDelphiMessage(msg) {
+  if (!msg || !msg.action) return;
+  var action = msg.action;
+  var data = msg.data || {};
+
+  switch (action) {
+    case 'topCoins':        onTopCoins(data); break;
+    case 'updatePrice':     onUpdatePrice(data); break;
+    case 'updateIndicators': onUpdateIndicators(data); break;
+    case 'updateSignal':    onUpdateSignal(data); break;
+    case 'updateBalance':   onUpdateBalance(data); break;
+    case 'updateCandles':   onUpdateCandles(data); break;
+    case 'addLog':          onAddLog(data); break;
+    case 'addTrade':        onAddTrade(data); break;
+    case 'connectionStatus': onConnectionStatus(data); break;
+    case 'botStatus':       onBotStatus(data); break;
+    case 'analyzing':       onAnalyzing(data); break;
+    case 'loadConfig':      onLoadConfig(data); break;
+    case 'scanProgress':    onScanProgress(data); break;
+    case 'selectedCoin':    onSelectedCoin(data); break;
+    case 'walletData':      onWalletData(data); break;
+    case 'walletLoading':   onWalletLoading(data); break;
+    case 'loadTrades':      onLoadTrades(data); break;
+    case 'walletSnapshots': onWalletSnapshots(data); break;
+    case 'walletSnapshotAdd': onWalletSnapshotAdd(data); break;
+    default: break;
+  }
+}
+
+// Also listen for WebView2 postMessage from Delphi
+if (window.chrome && window.chrome.webview) {
+  window.chrome.webview.addEventListener('message', function(event) {
+    var msg = event.data;
+    if (typeof msg === 'string') {
+      try { msg = JSON.parse(msg); } catch (e) { return; }
+    }
+    handleDelphiMessage(msg);
+  });
+}
+
+// =====================================================================
+// HANDLERS: DELPHI -> JS
+// =====================================================================
+function onTopCoins(data) {
+  var coins = data.coins || [];
+  state.coins = coins;
+  renderCoinsTable();
+  document.getElementById('last-scan-time').textContent = 'Ultimo scan: ' + formatTime(new Date());
+  document.getElementById('scan-progress-bar').textContent = '';
+}
+
+function onUpdatePrice(data) {
+  if (data.symbol && data.symbol === state.selectedCoin) {
+    document.getElementById('detail-price').textContent = formatPrice(data.price);
+    document.getElementById('trade-selected-price').textContent = formatPrice(data.price) + ' USDT';
+  }
+  for (var i = 0; i < state.coins.length; i++) {
+    if (state.coins[i].symbol === data.symbol) {
+      state.coins[i].price = data.price;
+      break;
+    }
+  }
+  renderCoinsTable();
+}
+
+function onUpdateIndicators(data) {
+  state.indicators = data;
+  renderIndicators();
+}
+
+function onUpdateSignal(data) {
+  state.signal = data;
+  renderSignal();
+}
+
+function onUpdateBalance(data) {
+  state.balance = data;
+  renderBalance();
+}
+
+function onUpdateCandles(data) {
+  state.candles = data.candles || [];
+  drawChart();
+}
+
+function onAddLog(data) {
+  appendLog(data.tag, data.message, data.time);
+}
+
+function onAddTrade(data) {
+  state.trades.unshift(data);
+  renderTrades();
+  playTradeSound(data.side || 'BUY');
+  // Update performance tab if it's active
+  var perfPanel = document.querySelector('[data-tab-panel="performance"]');
+  if (perfPanel && perfPanel.classList.contains('active')) {
+    renderPerformance();
+  }
+  // Update wallet mini chart if visible
+  var walletPanel = document.querySelector('[data-tab-panel="wallet"]');
+  if (walletPanel && walletPanel.classList.contains('active')) {
+    drawWalletMiniChart();
+  }
+}
+
+function onLoadTrades(data) {
+  var trades = data.trades || [];
+  state.trades = trades;
+  renderTrades();
+}
+
+function onConnectionStatus(data) {
+  state.connected = data.connected;
+  state.testnet = data.testnet;
+  var dot = document.getElementById('conn-dot');
+  var text = document.getElementById('conn-text');
+  var badge = document.getElementById('net-badge');
+
+  if (data.connected) {
+    dot.className = 'status-dot online';
+    text.textContent = 'Conectado';
+  } else {
+    dot.className = 'status-dot offline';
+    text.textContent = 'Desconectado';
+  }
+
+  if (data.testnet) {
+    badge.style.display = 'inline-block';
+    badge.className = 'badge badge-testnet';
+    badge.textContent = 'TESTNET';
+  } else if (data.connected) {
+    badge.style.display = 'inline-block';
+    badge.className = 'badge badge-mainnet';
+    badge.textContent = 'MAINNET';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function onBotStatus(data) {
+  state.botRunning = data.running;
+  var dot = document.getElementById('bot-dot');
+  var text = document.getElementById('bot-status-text');
+  var btnStart = document.getElementById('btn-start-bot');
+  var btnStop = document.getElementById('btn-stop-bot');
+
+  if (data.running) {
+    dot.className = 'status-dot online';
+    text.textContent = 'Bot rodando';
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+  } else {
+    dot.className = 'status-dot offline';
+    text.textContent = 'Bot parado';
+    btnStart.disabled = false;
+    btnStop.disabled = true;
+  }
+}
+
+function onAnalyzing(data) {
+  state.analyzing = data.active;
+  var btn = document.getElementById('btn-analyze');
+  if (data.active) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Analisando...';
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '&#x1F9E0; Analisar com IA';
+  }
+}
+
+function onLoadConfig(data) {
+  setInputVal('cfg-apiKey', data.apiKey);
+  setInputVal('cfg-secretKey', data.secretKey);
+  setToggle('cfg-testnet', data.testnet);
+  setInputVal('cfg-aiKey', data.aiKey);
+  setInputVal('cfg-aiModel', data.aiModel);
+  setInputVal('cfg-aiBaseURL', data.aiBaseURL);
+  setInputVal('cfg-tradeAmount', data.tradeAmount);
+  setInputVal('cfg-stopLoss', data.stopLoss);
+  setInputVal('cfg-takeProfit', data.takeProfit);
+  setInputVal('cfg-minConfidence', data.minConfidence);
+  setInputVal('cfg-botInterval', data.botInterval);
+  setInputVal('cfg-topCoins', data.topCoins);
+  setInputVal('cfg-lateralTimeout', data.lateralTimeout);
+  setInputVal('cfg-snapshotInterval', data.snapshotInterval);
+  setToggle('cfg-autoTrade', data.autoTrade);
+  setInputVal('cfg-interval', data.interval);
+}
+
+function onScanProgress(data) {
+  document.getElementById('scan-progress-bar').textContent = data.message || '';
+}
+
+function onSelectedCoin(data) {
+  selectCoinUI(data.symbol);
+}
+
+// =====================================================================
+// ACTIONS: JS -> DELPHI
+// =====================================================================
+function doScan() {
+  document.getElementById('scan-progress-bar').textContent = 'Escaneando...';
+  sendToDelphi('scanNow');
+}
+
+function doSelectCoin(symbol) {
+  sendToDelphi('selectCoin', { symbol: symbol });
+  selectCoinUI(symbol);
+}
+
+function doAnalyze() {
+  if (!state.selectedCoin) return;
+  sendToDelphi('analyze');
+}
+
+function doBuy() {
+  var amount = document.getElementById('trade-amount').value;
+  if (!amount || parseFloat(amount) <= 0) return;
+  sendToDelphi('buy', { amount: parseFloat(amount) });
+}
+
+function doSell() {
+  var amount = document.getElementById('trade-amount').value;
+  if (!amount || parseFloat(amount) <= 0) return;
+  sendToDelphi('sell', { amount: parseFloat(amount) });
+}
+
+function doStartBot() {
+  sendToDelphi('startBot');
+}
+
+function doStopBot() {
+  sendToDelphi('stopBot');
+}
+
+function doTestConnection() {
+  sendToDelphi('testConnection');
+}
+
+function doSaveConfig() {
+  var cfg = {
+    apiKey: getInputVal('cfg-apiKey'),
+    secretKey: getInputVal('cfg-secretKey'),
+    testnet: getToggle('cfg-testnet'),
+    aiKey: getInputVal('cfg-aiKey'),
+    aiModel: getInputVal('cfg-aiModel'),
+    aiBaseURL: getInputVal('cfg-aiBaseURL'),
+    tradeAmount: parseFloat(getInputVal('cfg-tradeAmount')) || 10,
+    stopLoss: parseFloat(getInputVal('cfg-stopLoss')) || 2,
+    takeProfit: parseFloat(getInputVal('cfg-takeProfit')) || 3,
+    minConfidence: parseFloat(getInputVal('cfg-minConfidence')) || 70,
+    botInterval: parseInt(getInputVal('cfg-botInterval'), 10) || 60,
+    topCoins: parseInt(getInputVal('cfg-topCoins'), 10) || 30,
+    lateralTimeout: parseInt(getInputVal('cfg-lateralTimeout'), 10) || 24,
+    snapshotInterval: parseInt(getInputVal('cfg-snapshotInterval'), 10) || 30,
+    autoTrade: getToggle('cfg-autoTrade'),
+    interval: getInputVal('cfg-interval')
+  };
+  sendToDelphi('saveConfig', cfg);
+}
+
+function toggleAutoTrade() {
+  var el = document.getElementById('toggle-autotrade');
+  var isActive = el.classList.toggle('active');
+  state.autoTrade = isActive;
+  document.getElementById('autotrade-warning').style.display = isActive ? 'block' : 'none';
+}
+
+function toggleConfigSwitch(id) {
+  document.getElementById(id).classList.toggle('active');
+}
+
+// =====================================================================
+// UI RENDERING: COINS TABLE
+// =====================================================================
+function selectCoinUI(symbol) {
+  state.selectedCoin = symbol;
+  state.candles = [];
+  state.indicators = {};
+  state.signal = null;
+
+  document.getElementById('no-coin-selected').style.display = 'none';
+  document.getElementById('coin-detail').style.display = 'block';
+  document.getElementById('detail-symbol').textContent = symbol;
+  document.getElementById('detail-price').textContent = '--';
+  document.getElementById('detail-change').textContent = '';
+  document.getElementById('detail-change').className = 'coin-change';
+
+  document.getElementById('trade-selected-coin').textContent = symbol;
+  document.getElementById('trade-selected-price').textContent = '--';
+
+  var coin = null;
+  for (var i = 0; i < state.coins.length; i++) {
+    if (state.coins[i].symbol === symbol) { coin = state.coins[i]; break; }
+  }
+  if (coin) {
+    document.getElementById('detail-price').textContent = formatPrice(coin.price);
+    var pct = parseFloat(coin.changePercent) || 0;
+    var changeClass = pct >= 0 ? 'positive' : 'negative';
+    var changePrefix = pct >= 0 ? '+' : '';
+    document.getElementById('detail-change').textContent = changePrefix + pct.toFixed(2) + '%';
+    document.getElementById('detail-change').className = 'coin-change ' + changeClass;
+    document.getElementById('trade-selected-price').textContent = formatPrice(coin.price) + ' USDT';
+  }
+
+  renderIndicators();
+  renderSignal();
+  drawChart();
+  renderCoinsTable();
+}
+
+function renderCoinsTable() {
+  var tbody = document.getElementById('coins-tbody');
+  if (state.coins.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text">Clique em "Scan Now" para buscar as moedas com melhor recuperacao.</td></tr>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < state.coins.length; i++) {
+    var coin = state.coins[i];
+    var isSelected = coin.symbol === state.selectedCoin;
+    var change = parseFloat(coin.changePercent) || 0;
+    var changeClass = change >= 0 ? 'positive' : 'negative';
+    var changePrefix = change >= 0 ? '+' : '';
+    var rowClass = isSelected ? 'selected-row' : '';
+
+    html += '<tr class="' + rowClass + '" onclick="doSelectCoin(\'' + escapeAttr(coin.symbol) + '\')">';
+    html += '<td>' + (i + 1) + '</td>';
+    html += '<td style="font-weight:600;color:var(--accent);">' + escapeHtml(coin.symbol) + '</td>';
+    html += '<td>' + formatPrice(coin.price) + '</td>';
+    html += '<td class="' + changeClass + '">' + changePrefix + change.toFixed(2) + '%</td>';
+    html += '<td>' + formatVolume(coin.quoteVolume || coin.volume) + '</td>';
+    html += '<td><button class="btn btn-accent btn-sm" onclick="event.stopPropagation();doSelectCoin(\'' + escapeAttr(coin.symbol) + '\')">Selecionar</button></td>';
+    html += '</tr>';
+  }
+
+  tbody.innerHTML = html;
+}
+
+// =====================================================================
+// UI RENDERING: INDICATORS
+// =====================================================================
+function renderIndicators() {
+  var d = state.indicators;
+  setElText('ind-rsi', d.rsi != null ? parseFloat(d.rsi).toFixed(2) : '--');
+  setElText('ind-macd', d.macd != null ? parseFloat(d.macd).toFixed(6) : '--');
+  setElText('ind-sma20', d.sma20 != null ? formatPrice(d.sma20) : '--');
+  setElText('ind-sma50', d.sma50 != null ? formatPrice(d.sma50) : '--');
+  setElText('ind-boll-up', d.bollingerUpper != null ? formatPrice(d.bollingerUpper) : '--');
+  setElText('ind-boll-low', d.bollingerLower != null ? formatPrice(d.bollingerLower) : '--');
+  setElText('ind-ema12', d.ema12 != null ? formatPrice(d.ema12) : '--');
+  setElText('ind-atr', d.atr != null ? parseFloat(d.atr).toFixed(6) : '--');
+
+  var rsiEl = document.getElementById('ind-rsi');
+  if (d.rsi != null) {
+    var rsi = parseFloat(d.rsi);
+    if (rsi < 30) rsiEl.style.color = 'var(--green)';
+    else if (rsi > 70) rsiEl.style.color = 'var(--red)';
+    else rsiEl.style.color = 'var(--text)';
+  } else {
+    rsiEl.style.color = 'var(--text)';
+  }
+
+  var macdEl = document.getElementById('ind-macd');
+  if (d.macd != null) {
+    macdEl.style.color = parseFloat(d.macd) >= 0 ? 'var(--green)' : 'var(--red)';
+  } else {
+    macdEl.style.color = 'var(--text)';
+  }
+}
+
+// =====================================================================
+// UI RENDERING: SIGNAL
+// =====================================================================
+function renderSignal() {
+  var container = document.getElementById('signal-content');
+  var card = document.getElementById('signal-card');
+  var s = state.signal;
+
+  card.className = 'card signal-card';
+
+  if (!s || !s.signal) {
+    container.innerHTML = '<div class="placeholder-text">Clique em "Analisar com IA" para gerar sinal.</div>';
+    return;
+  }
+
+  card.classList.add(s.signal);
+
+  var confidence = parseFloat(s.confidence) || 0;
+  var barColor = 'var(--accent)';
+  if (s.signal === 'STRONG_BUY' || s.signal === 'BUY') barColor = 'var(--green)';
+  else if (s.signal === 'SELL' || s.signal === 'STRONG_SELL') barColor = 'var(--red)';
+
+  var signalLabels = {
+    'STRONG_BUY': '&#x1F7E2; COMPRA FORTE',
+    'BUY': '&#x1F7E2; COMPRA',
+    'HOLD': '&#x1F7E1; MANTER',
+    'SELL': '&#x1F534; VENDA',
+    'STRONG_SELL': '&#x1F534; VENDA FORTE'
+  };
+
+  var html = '';
+  html += '<div class="signal-name ' + s.signal + '">' + (signalLabels[s.signal] || s.signal) + '</div>';
+  html += '<div style="font-size:12px;color:var(--text-muted);">Confianca: ' + confidence.toFixed(1) + '%</div>';
+  html += '<div class="confidence-bar-bg"><div class="confidence-bar-fill" style="width:' + confidence + '%;background:' + barColor + ';"></div></div>';
+
+  if (s.reasoning) {
+    html += '<div class="signal-reasoning">"' + escapeHtml(s.reasoning) + '"</div>';
+  }
+
+  html += '<div class="signal-prices">';
+  html += '<div class="signal-price-item"><div class="signal-price-label">&#x1F3AF; Entrada</div><div class="signal-price-value">' + formatPrice(s.entry) + '</div></div>';
+  html += '<div class="signal-price-item"><div class="signal-price-label">&#x1F6D1; Stop Loss</div><div class="signal-price-value" style="color:var(--red);">' + formatPrice(s.stopLoss) + '</div></div>';
+  html += '<div class="signal-price-item"><div class="signal-price-label">&#x1F3C6; Take Profit</div><div class="signal-price-value" style="color:var(--green);">' + formatPrice(s.takeProfit) + '</div></div>';
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+// =====================================================================
+// UI RENDERING: BALANCE
+// =====================================================================
+function renderBalance() {
+  var b = state.balance;
+  setElText('bal-base-asset', b.baseAsset || '--');
+  setElText('bal-quote-asset', b.quoteAsset || 'USDT');
+  setElText('bal-base-free', formatNum(b.baseFree));
+  setElText('bal-base-locked', formatNum(b.baseLocked));
+  setElText('bal-quote-free', formatNum(b.quoteFree));
+  setElText('bal-quote-locked', formatNum(b.quoteLocked));
+}
+
+// =====================================================================
+// UI RENDERING: TRADES
+// =====================================================================
+function renderTrades() {
+  var tbody = document.getElementById('trades-tbody');
+  if (state.trades.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text">Nenhum trade registrado.</td></tr>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < state.trades.length; i++) {
+    var t = state.trades[i];
+    var sideClass = t.side === 'BUY' ? 'positive' : 'negative';
+    var sideLabel = t.side === 'BUY' ? 'Compra' : 'Venda';
+    var time = t.timestamp ? formatTime(parseTradeTimestamp(t.timestamp)) : '--';
+
+    html += '<tr>';
+    html += '<td style="font-size:11px;">' + escapeHtml(time) + '</td>';
+    html += '<td style="font-weight:600;">' + escapeHtml(t.symbol || '') + '</td>';
+    html += '<td class="' + sideClass + '">' + sideLabel + '</td>';
+    html += '<td>' + formatPrice(t.price) + '</td>';
+    html += '<td>' + formatNum(t.quantity) + '</td>';
+    html += '<td>' + escapeHtml(t.signal || '--') + ' (' + (t.confidence != null ? parseFloat(t.confidence).toFixed(0) + '%' : '--') + ')</td>';
+    html += '</tr>';
+  }
+
+  tbody.innerHTML = html;
+}
+
+// =====================================================================
+// LOG
+// =====================================================================
+function appendLog(tag, message, time) {
+  var container = document.getElementById('log-container');
+  var entry = document.createElement('div');
+  entry.className = 'log-entry';
+
+  var timeStr = time || formatTime(new Date());
+  var tagLower = (tag || 'system').toLowerCase();
+
+  entry.innerHTML =
+    '<span class="log-time">' + escapeHtml(timeStr) + '</span>' +
+    '<span class="log-tag ' + escapeAttr(tagLower) + '">' + escapeHtml(tag || 'SYSTEM') + '</span>' +
+    '<span class="log-message">' + escapeHtml(message || '') + '</span>';
+
+  // Auto-scroll so se ja estiver perto do fundo (nao atrapalha leitura)
+  var isNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 60;
+  container.appendChild(entry);
+  if (isNearBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // Keep max 500 log entries
+  while (container.children.length > 500) {
+    container.removeChild(container.firstChild);
+  }
+}
+
+function clearLogs() {
+  document.getElementById('log-container').innerHTML = '';
+}
+
+// =====================================================================
+// CANDLESTICK CHART (Pure Canvas API)
+// =====================================================================
+var chartCanvas = document.getElementById('candle-chart');
+var chartCtx = chartCanvas.getContext('2d');
+var chartTooltipEl = document.getElementById('chart-tooltip');
+var chartHoveredIndex = -1;
+
+function drawChart() {
+  var wrapper = document.getElementById('chart-wrapper');
+  if (!wrapper) return;
+
+  var dpr = window.devicePixelRatio || 1;
+  var w = wrapper.clientWidth;
+  var h = 300;
+
+  if (w <= 0) return;
+
+  chartCanvas.width = w * dpr;
+  chartCanvas.height = h * dpr;
+  chartCanvas.style.width = w + 'px';
+  chartCanvas.style.height = h + 'px';
+  chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Background
+  chartCtx.fillStyle = '#0b0e11';
+  chartCtx.fillRect(0, 0, w, h);
+
+  var candles = state.candles;
+  if (!candles || candles.length === 0) {
+    chartCtx.fillStyle = '#848e9c';
+    chartCtx.font = '14px Segoe UI, sans-serif';
+    chartCtx.textAlign = 'center';
+    chartCtx.textBaseline = 'middle';
+    chartCtx.fillText('Sem dados de candles', w / 2, h / 2);
+    chartTooltipEl.style.display = 'none';
+    return;
+  }
+
+  // Take last 50
+  var displayCandles = candles.slice(-50);
+  var numCandles = displayCandles.length;
+
+  var paddingTop = 20;
+  var paddingBottom = 24;
+  var paddingLeft = 10;
+  var paddingRight = 65;
+  var chartWidth = w - paddingLeft - paddingRight;
+  var chartHeight = h - paddingTop - paddingBottom;
+
+  // Compute min/max
+  var minPrice = Infinity;
+  var maxPrice = -Infinity;
+  for (var i = 0; i < numCandles; i++) {
+    var lo = parseFloat(displayCandles[i].l);
+    var hi = parseFloat(displayCandles[i].h);
+    if (lo < minPrice) minPrice = lo;
+    if (hi > maxPrice) maxPrice = hi;
+  }
+
+  var priceRange = maxPrice - minPrice;
+  if (priceRange === 0) priceRange = maxPrice * 0.01 || 1;
+  minPrice -= priceRange * 0.05;
+  maxPrice += priceRange * 0.05;
+  priceRange = maxPrice - minPrice;
+
+  var candleFullWidth = chartWidth / numCandles;
+  var candleBodyWidth = Math.max(1, Math.floor(candleFullWidth * 0.65));
+  if (candleBodyWidth % 2 === 0) candleBodyWidth = Math.max(1, candleBodyWidth - 1);
+
+  function priceToY(price) {
+    return paddingTop + chartHeight - ((price - minPrice) / priceRange) * chartHeight;
+  }
+
+  // Grid lines + price axis
+  var numGridLines = 6;
+  chartCtx.textAlign = 'left';
+  chartCtx.textBaseline = 'middle';
+  for (var g = 0; g <= numGridLines; g++) {
+    var gy = paddingTop + (chartHeight / numGridLines) * g;
+    var gridPrice = maxPrice - (priceRange / numGridLines) * g;
+
+    // Grid line
+    chartCtx.strokeStyle = 'rgba(43,49,57,0.5)';
+    chartCtx.lineWidth = 0.5;
+    chartCtx.beginPath();
+    chartCtx.moveTo(paddingLeft, gy);
+    chartCtx.lineTo(w - paddingRight, gy);
+    chartCtx.stroke();
+
+    // Price label
+    chartCtx.fillStyle = '#848e9c';
+    chartCtx.font = '10px Segoe UI, sans-serif';
+    chartCtx.fillText(formatPriceAxis(gridPrice), w - paddingRight + 6, gy);
+  }
+
+  // Draw candles
+  for (var ci = 0; ci < numCandles; ci++) {
+    var candle = displayCandles[ci];
+    var o = parseFloat(candle.o);
+    var cHi = parseFloat(candle.h);
+    var cLo = parseFloat(candle.l);
+    var cl = parseFloat(candle.c);
+    var isUp = cl >= o;
+    var color = isUp ? '#0ecb81' : '#f6465d';
+
+    var cx = paddingLeft + ci * candleFullWidth + candleFullWidth / 2;
+    var yOpen = priceToY(o);
+    var yClose = priceToY(cl);
+    var yHigh = priceToY(cHi);
+    var yLow = priceToY(cLo);
+
+    // Wick (shadow line)
+    chartCtx.strokeStyle = color;
+    chartCtx.lineWidth = 1;
+    chartCtx.beginPath();
+    chartCtx.moveTo(Math.round(cx) + 0.5, Math.round(yHigh));
+    chartCtx.lineTo(Math.round(cx) + 0.5, Math.round(yLow));
+    chartCtx.stroke();
+
+    // Body
+    var bodyTop = Math.min(yOpen, yClose);
+    var bodyH = Math.abs(yClose - yOpen);
+    if (bodyH < 1) bodyH = 1;
+
+    if (isUp) {
+      // Green candle: filled body
+      chartCtx.fillStyle = color;
+      chartCtx.fillRect(
+        Math.round(cx - candleBodyWidth / 2),
+        Math.round(bodyTop),
+        candleBodyWidth,
+        Math.max(1, Math.round(bodyH))
+      );
+    } else {
+      // Red candle: filled body
+      chartCtx.fillStyle = color;
+      chartCtx.fillRect(
+        Math.round(cx - candleBodyWidth / 2),
+        Math.round(bodyTop),
+        candleBodyWidth,
+        Math.max(1, Math.round(bodyH))
+      );
+    }
+
+    // Hover highlight
+    if (ci === chartHoveredIndex) {
+      chartCtx.strokeStyle = 'rgba(240,185,11,0.4)';
+      chartCtx.lineWidth = 1;
+      chartCtx.setLineDash([3, 3]);
+      chartCtx.beginPath();
+      chartCtx.moveTo(Math.round(cx) + 0.5, paddingTop);
+      chartCtx.lineTo(Math.round(cx) + 0.5, paddingTop + chartHeight);
+      chartCtx.stroke();
+      chartCtx.setLineDash([]);
+    }
+  }
+
+  // Bottom axis
+  chartCtx.strokeStyle = 'rgba(43,49,57,0.8)';
+  chartCtx.lineWidth = 1;
+  chartCtx.beginPath();
+  chartCtx.moveTo(paddingLeft, paddingTop + chartHeight);
+  chartCtx.lineTo(w - paddingRight, paddingTop + chartHeight);
+  chartCtx.stroke();
+
+  // Tooltip
+  if (chartHoveredIndex >= 0 && chartHoveredIndex < numCandles) {
+    var hc = displayCandles[chartHoveredIndex];
+    var tDate = hc.t ? new Date(hc.t) : null;
+    var dateStr = tDate ? tDate.toLocaleString('pt-BR') : '--';
+    var hcClose = parseFloat(hc.c);
+    var hcOpen = parseFloat(hc.o);
+    var candleDir = hcClose >= hcOpen ? '&#x1F7E2;' : '&#x1F534;';
+
+    chartTooltipEl.innerHTML =
+      '<div style="margin-bottom:2px;">' + candleDir + ' <strong>' + escapeHtml(dateStr) + '</strong></div>' +
+      '<div>Abertura: <strong>' + formatPriceAxis(parseFloat(hc.o)) + '</strong></div>' +
+      '<div>Maxima: <strong>' + formatPriceAxis(parseFloat(hc.h)) + '</strong></div>' +
+      '<div>Minima: <strong>' + formatPriceAxis(parseFloat(hc.l)) + '</strong></div>' +
+      '<div>Fechamento: <strong>' + formatPriceAxis(parseFloat(hc.c)) + '</strong></div>' +
+      '<div>Volume: <strong>' + formatVolume(hc.v) + '</strong></div>';
+    chartTooltipEl.style.display = 'block';
+  } else {
+    chartTooltipEl.style.display = 'none';
+  }
+}
+
+// Chart mouse events
+chartCanvas.addEventListener('mousemove', function(e) {
+  if (!state.candles || state.candles.length === 0) return;
+
+  var rect = chartCanvas.getBoundingClientRect();
+  var mx = e.clientX - rect.left;
+
+  var wrapper = document.getElementById('chart-wrapper');
+  var w = wrapper.clientWidth;
+  var paddingLeft = 10;
+  var paddingRight = 65;
+  var chartWidth = w - paddingLeft - paddingRight;
+  var displayCandles = state.candles.slice(-50);
+  var numCandles = displayCandles.length;
+  if (numCandles === 0) return;
+
+  var candleFullWidth = chartWidth / numCandles;
+  var idx = Math.floor((mx - paddingLeft) / candleFullWidth);
+
+  if (idx < 0 || idx >= numCandles) {
+    if (chartHoveredIndex !== -1) {
+      chartHoveredIndex = -1;
+      drawChart();
+    }
+    return;
+  }
+
+  if (idx !== chartHoveredIndex) {
+    chartHoveredIndex = idx;
+    drawChart();
+  }
+});
+
+chartCanvas.addEventListener('mouseleave', function() {
+  if (chartHoveredIndex !== -1) {
+    chartHoveredIndex = -1;
+    drawChart();
+  }
+});
+
+window.addEventListener('resize', function() {
+  drawChart();
+  var perfPanel = document.querySelector('[data-tab-panel="performance"]');
+  if (perfPanel && perfPanel.classList.contains('active')) {
+    renderPerformance();
+  }
+  var walletPanel = document.querySelector('[data-tab-panel="wallet"]');
+  if (walletPanel && walletPanel.classList.contains('active')) {
+    drawWalletMiniChart();
+  }
+});
+
+// =====================================================================
+// UTILITY FUNCTIONS
+// =====================================================================
+var audioCtx = null;
+
+// Inicializa AudioContext no primeiro clique do usuario (exigencia do navegador)
+document.addEventListener('click', function() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}, { once: false });
+
+function playTradeSound(side) {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    var now = audioCtx.currentTime;
+
+    if (side === 'BUY') {
+      // Tom ascendente duplo (compra - positivo)
+      [440, 660].forEach(function(freq, i) {
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.18, now + i * 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.25);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + i * 0.15);
+        osc.stop(now + i * 0.15 + 0.25);
+      });
+    } else {
+      // Tom descendente duplo (venda - alerta)
+      [660, 440].forEach(function(freq, i) {
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.18, now + i * 0.15);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.25);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + i * 0.15);
+        osc.stop(now + i * 0.15 + 0.25);
+      });
+    }
+  } catch(e) { console.warn('Audio error:', e); }
+}
+
+function formatPrice(val) {
+  if (val == null || val === '' || val === '--') return '--';
+  var n = parseFloat(val);
+  if (isNaN(n)) return '--';
+  if (n >= 1000) return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (n >= 1) return n.toFixed(4);
+  if (n >= 0.01) return n.toFixed(6);
+  return n.toFixed(8);
+}
+
+function formatPriceAxis(val) {
+  if (val == null) return '--';
+  var n = parseFloat(val);
+  if (isNaN(n)) return '--';
+  if (n >= 10000) return n.toFixed(1);
+  if (n >= 1000) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(4);
+  if (n >= 0.01) return n.toFixed(6);
+  return n.toFixed(8);
+}
+
+function formatVolume(val) {
+  if (val == null || val === '') return '--';
+  var n = parseFloat(val);
+  if (isNaN(n)) return '--';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+  return n.toFixed(2);
+}
+
+function formatNum(val) {
+  if (val == null || val === '') return '0.00';
+  var n = parseFloat(val);
+  if (isNaN(n)) return '0.00';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+}
+
+function formatTime(date) {
+  if (!date || isNaN(date.getTime())) return '--';
+  var h = String(date.getHours()).padStart(2, '0');
+  var m = String(date.getMinutes()).padStart(2, '0');
+  var s = String(date.getSeconds()).padStart(2, '0');
+  return h + ':' + m + ':' + s;
+}
+
+function escapeHtml(text) {
+  if (text == null) return '';
+  var str = String(text);
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  if (text == null) return '';
+  return String(text).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function setElText(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = (val != null) ? val : '--';
+}
+
+function setInputVal(id, val) {
+  var el = document.getElementById(id);
+  if (el && val != null && val !== undefined) el.value = val;
+}
+
+function getInputVal(id) {
+  var el = document.getElementById(id);
+  return el ? el.value : '';
+}
+
+function setToggle(id, active) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  if (active) el.classList.add('active');
+  else el.classList.remove('active');
+}
+
+function getToggle(id) {
+  var el = document.getElementById(id);
+  return el ? el.classList.contains('active') : false;
+}
+
+// =====================================================================
+// WALLET (CARTEIRA) TAB
+// =====================================================================
+function onWalletLoading(data) {
+  var loadingEl = document.getElementById('wallet-loading');
+  var refreshBtn = document.getElementById('wallet-refresh-btn');
+  if (data.loading) {
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (refreshBtn) refreshBtn.disabled = true;
+  } else {
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (refreshBtn) refreshBtn.disabled = false;
+  }
+}
+
+function onWalletSnapshots(data) {
+  state.walletSnapshots = data.snapshots || [];
+  drawWalletMiniChart();
+}
+
+function onWalletSnapshotAdd(data) {
+  if (!data || !data.timestamp) return;
+  state.walletSnapshots.push({ timestamp: data.timestamp, totalUSDT: data.totalUSDT || 0 });
+  // Limitar a 500 snapshots no JS
+  if (state.walletSnapshots.length > 500) state.walletSnapshots.shift();
+  drawWalletMiniChart();
+}
+
+function drawWalletMiniChart() {
+  var canvas = document.getElementById('wallet-mini-chart');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  if (rect.width === 0) return;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  var W = rect.width;
+  var H = rect.height;
+
+  ctx.fillStyle = '#0b0e11';
+  ctx.fillRect(0, 0, W, H);
+
+  var snaps = state.walletSnapshots;
+  var infoEl = document.getElementById('wallet-chart-info');
+  var pnlEl = document.getElementById('wallet-chart-pnl');
+
+  if (snaps.length < 2) {
+    if (infoEl) infoEl.textContent = snaps.length + ' snapshot' + (snaps.length !== 1 ? 's' : '');
+    if (pnlEl) { pnlEl.textContent = '$0.00'; pnlEl.style.color = 'var(--text-muted)'; }
+    ctx.fillStyle = '#848e9c';
+    ctx.font = '11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('Aguardando snapshots...', W / 2, H / 2 + 4);
+    return;
+  }
+
+  var firstVal = snaps[0].totalUSDT;
+  var lastVal = snaps[snaps.length - 1].totalUSDT;
+  var change = lastVal - firstVal;
+  var changePct = firstVal > 0 ? (change / firstVal * 100) : 0;
+
+  if (infoEl) infoEl.textContent = snaps.length + ' snapshots';
+  if (pnlEl) {
+    pnlEl.textContent = (change >= 0 ? '+' : '') + '$' + change.toFixed(2) +
+      ' (' + (changePct >= 0 ? '+' : '') + changePct.toFixed(1) + '%)';
+    pnlEl.style.color = change >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  var pad = 4;
+  var cW = W - pad * 2;
+  var cH = H - pad * 2;
+
+  var minV = snaps[0].totalUSDT, maxV = snaps[0].totalUSDT;
+  for (var i = 1; i < snaps.length; i++) {
+    if (snaps[i].totalUSDT < minV) minV = snaps[i].totalUSDT;
+    if (snaps[i].totalUSDT > maxV) maxV = snaps[i].totalUSDT;
+  }
+  var range = maxV - minV;
+  if (range === 0) range = maxV * 0.01 || 10;
+  minV -= range * 0.1;
+  maxV += range * 0.1;
+
+  function xP(idx) { return pad + (idx / (snaps.length - 1)) * cW; }
+  function yP(val) { return pad + cH - ((val - minV) / (maxV - minV)) * cH; }
+
+  // Baseline (primeiro valor) - linha pontilhada
+  var baseY = yP(firstVal);
+  ctx.save();
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  ctx.moveTo(pad, baseY);
+  ctx.lineTo(W - pad, baseY);
+  ctx.stroke();
+  ctx.restore();
+
+  // Area fill - verde acima da baseline, vermelho abaixo
+  // Green area (acima da baseline)
+  ctx.beginPath();
+  ctx.moveTo(xP(0), Math.min(yP(snaps[0].totalUSDT), baseY));
+  for (var i = 0; i < snaps.length; i++) ctx.lineTo(xP(i), Math.min(yP(snaps[i].totalUSDT), baseY));
+  ctx.lineTo(xP(snaps.length - 1), baseY);
+  ctx.lineTo(xP(0), baseY);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(14,203,129,0.15)';
+  ctx.fill();
+  // Red area (abaixo da baseline)
+  ctx.beginPath();
+  ctx.moveTo(xP(0), Math.max(yP(snaps[0].totalUSDT), baseY));
+  for (var i = 0; i < snaps.length; i++) ctx.lineTo(xP(i), Math.max(yP(snaps[i].totalUSDT), baseY));
+  ctx.lineTo(xP(snaps.length - 1), baseY);
+  ctx.lineTo(xP(0), baseY);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(246,70,93,0.15)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(xP(0), yP(snaps[0].totalUSDT));
+  for (var i = 1; i < snaps.length; i++) ctx.lineTo(xP(i), yP(snaps[i].totalUSDT));
+  ctx.strokeStyle = change >= 0 ? '#0ecb81' : '#f6465d';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Last point dot
+  ctx.beginPath();
+  ctx.arc(xP(snaps.length - 1), yP(lastVal), 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = change >= 0 ? '#0ecb81' : '#f6465d';
+  ctx.fill();
+}
+
+function onWalletData(data) {
+  var totalUSDT = data.totalUSDT || 0;
+  var balances = data.balances || [];
+
+  setElText('wallet-total-usdt', '$' + totalUSDT.toLocaleString('en-US', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  }));
+  setElText('wallet-asset-count', balances.length + ' ativo' + (balances.length !== 1 ? 's' : ''));
+
+  balances.sort(function(a, b) { return (b.valueUSDT || 0) - (a.valueUSDT || 0); });
+
+  var tbody = document.getElementById('wallet-tbody');
+  if (!tbody) return;
+
+  if (balances.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="placeholder-text">Nenhum ativo com saldo encontrado.</td></tr>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < balances.length; i++) {
+    var b = balances[i];
+    var total = (b.free || 0) + (b.locked || 0);
+    var valueUSDT = b.valueUSDT || 0;
+    var pct = totalUSDT > 0 ? (valueUSDT / totalUSDT * 100) : 0;
+
+    html += '<tr>';
+    html += '<td style="font-weight:600;">' + escapeHtml(b.asset) + '</td>';
+    html += '<td>' + formatNum(b.free) + '</td>';
+    html += '<td>' + formatNum(b.locked) + '</td>';
+    html += '<td style="font-weight:600;">' + formatNum(total) + '</td>';
+    html += '<td style="font-weight:600; color:var(--accent);">$' +
+      valueUSDT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+      '<span style="font-size:10px; color:var(--text-muted); margin-left:6px;">(' +
+      pct.toFixed(1) + '%)</span></td>';
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+  drawWalletMiniChart();
+}
+
+// =====================================================================
+// PERFORMANCE TAB
+// =====================================================================
+function parseTradeTimestamp(ts) {
+  if (!ts) return new Date(0);
+  // Format: "dd/mm/yyyy hh:nn:ss"
+  var parts = ts.split(' ');
+  if (parts.length < 2) return new Date(0);
+  var d = parts[0].split('/');
+  var t = parts[1].split(':');
+  if (d.length < 3 || t.length < 3) return new Date(0);
+  return new Date(parseInt(d[2]), parseInt(d[1])-1, parseInt(d[0]), parseInt(t[0]), parseInt(t[1]), parseInt(t[2]));
+}
+
+function formatDuration(ms) {
+  if (ms <= 0) return '--';
+  var sec = Math.floor(ms / 1000);
+  if (sec < 60) return sec + 's';
+  var min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm ' + (sec % 60) + 's';
+  var hrs = Math.floor(min / 60);
+  if (hrs < 24) return hrs + 'h ' + (min % 60) + 'm';
+  var days = Math.floor(hrs / 24);
+  return days + 'd ' + (hrs % 24) + 'h';
+}
+
+function calculatePerformance() {
+  var result = {
+    totalTrades: 0,
+    buys: 0,
+    sells: 0,
+    totalPnl: 0,
+    wins: 0,
+    losses: 0,
+    bestTrade: null,
+    worstTrade: null,
+    pairs: [],
+    openPositions: [],
+    symbolStats: {},
+    equityCurve: []
+  };
+
+  if (state.trades.length === 0) return result;
+
+  // Sort chronologically (oldest first) - state.trades is newest first
+  var sorted = state.trades.slice().sort(function(a, b) {
+    return parseTradeTimestamp(a.timestamp) - parseTradeTimestamp(b.timestamp);
+  });
+
+  result.totalTrades = sorted.length;
+
+  // Count buys/sells
+  for (var i = 0; i < sorted.length; i++) {
+    if (sorted[i].side === 'BUY') result.buys++;
+    else result.sells++;
+  }
+
+  // FIFO matching: BUY queue per symbol
+  var buyQueues = {};
+
+  for (var i = 0; i < sorted.length; i++) {
+    var t = sorted[i];
+    var sym = t.symbol || 'UNKNOWN';
+    var price = parseFloat(t.price) || 0;
+    var qty = parseFloat(t.quantity) || 0;
+
+    if (!buyQueues[sym]) buyQueues[sym] = [];
+
+    if (t.side === 'BUY') {
+      buyQueues[sym].push({
+        price: price,
+        quantity: qty,
+        timestamp: t.timestamp,
+        signal: t.signal,
+        confidence: t.confidence,
+        date: parseTradeTimestamp(t.timestamp)
+      });
+    } else if (t.side === 'SELL' && buyQueues[sym].length > 0) {
+      // Match with oldest BUY
+      var buy = buyQueues[sym].shift();
+      var matchQty = Math.min(buy.quantity, qty);
+      var pnl = (price - buy.price) * matchQty;
+      var pnlPct = buy.price > 0 ? ((price - buy.price) / buy.price) * 100 : 0;
+      var sellDate = parseTradeTimestamp(t.timestamp);
+      var duration = sellDate - buy.date;
+
+      var pair = {
+        symbol: sym,
+        entryPrice: buy.price,
+        exitPrice: price,
+        quantity: matchQty,
+        pnl: pnl,
+        pnlPct: pnlPct,
+        duration: duration,
+        entryTime: buy.timestamp,
+        exitTime: t.timestamp,
+        signal: buy.signal || t.signal
+      };
+
+      result.pairs.push(pair);
+      result.totalPnl += pnl;
+
+      if (pnl > 0) result.wins++;
+      else result.losses++;
+
+      if (result.bestTrade === null || pnl > result.bestTrade.pnl) result.bestTrade = pair;
+      if (result.worstTrade === null || pnl < result.worstTrade.pnl) result.worstTrade = pair;
+
+      // Symbol stats
+      if (!result.symbolStats[sym]) result.symbolStats[sym] = { trades: 0, pnl: 0, wins: 0, losses: 0 };
+      result.symbolStats[sym].trades++;
+      result.symbolStats[sym].pnl += pnl;
+      if (pnl > 0) result.symbolStats[sym].wins++;
+      else result.symbolStats[sym].losses++;
+
+      // Equity curve point
+      result.equityCurve.push({
+        date: sellDate,
+        pnl: result.totalPnl
+      });
+    }
+  }
+
+  // Collect open positions (unmatched BUYs)
+  for (var sym in buyQueues) {
+    for (var j = 0; j < buyQueues[sym].length; j++) {
+      var b = buyQueues[sym][j];
+      result.openPositions.push({
+        symbol: sym,
+        price: b.price,
+        quantity: b.quantity,
+        value: b.price * b.quantity,
+        timestamp: b.timestamp
+      });
+    }
+  }
+
+  return result;
+}
+
+function drawEquityCurve(data) {
+  var canvas = document.getElementById('equity-canvas');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  var W = rect.width;
+  var H = rect.height;
+
+  // Background
+  ctx.fillStyle = '#0b0e11';
+  ctx.fillRect(0, 0, W, H);
+
+  var curve = data.equityCurve;
+  if (curve.length < 2) {
+    ctx.fillStyle = '#848e9c';
+    ctx.font = '13px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('Necessario pelo menos 2 trades pareados para gerar o grafico.', W/2, H/2);
+    return;
+  }
+
+  var pad = { top: 20, right: 20, bottom: 30, left: 65 };
+  var cW = W - pad.left - pad.right;
+  var cH = H - pad.top - pad.bottom;
+
+  // Find min/max P&L
+  var minPnl = 0, maxPnl = 0;
+  for (var i = 0; i < curve.length; i++) {
+    if (curve[i].pnl < minPnl) minPnl = curve[i].pnl;
+    if (curve[i].pnl > maxPnl) maxPnl = curve[i].pnl;
+  }
+  // Add margin
+  var range = maxPnl - minPnl;
+  if (range === 0) range = 10;
+  minPnl -= range * 0.1;
+  maxPnl += range * 0.1;
+
+  function xPos(idx) { return pad.left + (idx / (curve.length - 1)) * cW; }
+  function yPos(val) { return pad.top + cH - ((val - minPnl) / (maxPnl - minPnl)) * cH; }
+
+  // Grid lines
+  ctx.strokeStyle = '#2b3139';
+  ctx.lineWidth = 0.5;
+  var gridSteps = 5;
+  for (var g = 0; g <= gridSteps; g++) {
+    var gVal = minPnl + (maxPnl - minPnl) * (g / gridSteps);
+    var gy = yPos(gVal);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, gy);
+    ctx.lineTo(W - pad.right, gy);
+    ctx.stroke();
+    ctx.fillStyle = '#848e9c';
+    ctx.font = '10px Consolas';
+    ctx.textAlign = 'right';
+    ctx.fillText(gVal.toFixed(2), pad.left - 6, gy + 3);
+  }
+
+  // Zero line (dashed)
+  if (minPnl < 0 && maxPnl > 0) {
+    var zy = yPos(0);
+    ctx.save();
+    ctx.strokeStyle = '#848e9c';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, zy);
+    ctx.lineTo(W - pad.right, zy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Area fill: green above zero, red below zero
+  var zeroY = yPos(0);
+  // Green area (above zero)
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), Math.min(yPos(curve[0].pnl), zeroY));
+  for (var i = 0; i < curve.length; i++) {
+    var y = yPos(curve[i].pnl);
+    ctx.lineTo(xPos(i), Math.min(y, zeroY));
+  }
+  ctx.lineTo(xPos(curve.length - 1), zeroY);
+  ctx.lineTo(xPos(0), zeroY);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(14,203,129,0.12)';
+  ctx.fill();
+
+  // Red area (below zero)
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), Math.max(yPos(curve[0].pnl), zeroY));
+  for (var i = 0; i < curve.length; i++) {
+    var y = yPos(curve[i].pnl);
+    ctx.lineTo(xPos(i), Math.max(y, zeroY));
+  }
+  ctx.lineTo(xPos(curve.length - 1), zeroY);
+  ctx.lineTo(xPos(0), zeroY);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(246,70,93,0.12)';
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(xPos(0), yPos(curve[0].pnl));
+  for (var i = 1; i < curve.length; i++) {
+    ctx.lineTo(xPos(i), yPos(curve[i].pnl));
+  }
+  var lastPnl = curve[curve.length - 1].pnl;
+  ctx.strokeStyle = lastPnl >= 0 ? '#0ecb81' : '#f6465d';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Dots
+  for (var i = 0; i < curve.length; i++) {
+    ctx.beginPath();
+    ctx.arc(xPos(i), yPos(curve[i].pnl), 3, 0, Math.PI * 2);
+    ctx.fillStyle = curve[i].pnl >= 0 ? '#0ecb81' : '#f6465d';
+    ctx.fill();
+  }
+
+  // X-axis labels (trade numbers)
+  ctx.fillStyle = '#848e9c';
+  ctx.font = '10px Consolas';
+  ctx.textAlign = 'center';
+  var labelStep = Math.max(1, Math.floor(curve.length / 8));
+  for (var i = 0; i < curve.length; i += labelStep) {
+    ctx.fillText('#' + (i + 1), xPos(i), H - pad.bottom + 16);
+  }
+  // Always show last
+  if ((curve.length - 1) % labelStep !== 0) {
+    ctx.fillText('#' + curve.length, xPos(curve.length - 1), H - pad.bottom + 16);
+  }
+}
+
+function renderPerformance() {
+  var data = calculatePerformance();
+
+  // Cards
+  document.getElementById('perf-total-trades').textContent = data.totalTrades;
+  document.getElementById('perf-buy-sell').textContent = data.buys + ' / ' + data.sells;
+
+  var pnlEl = document.getElementById('perf-total-pnl');
+  pnlEl.textContent = (data.totalPnl >= 0 ? '+' : '') + data.totalPnl.toFixed(2);
+  pnlEl.className = 'perf-card-value ' + (data.totalPnl > 0 ? 'positive' : data.totalPnl < 0 ? 'negative' : 'neutral');
+
+  var totalPaired = data.wins + data.losses;
+  var wrEl = document.getElementById('perf-win-rate');
+  if (totalPaired > 0) {
+    var wr = (data.wins / totalPaired * 100).toFixed(1);
+    wrEl.textContent = wr + '%';
+    wrEl.className = 'perf-card-value ' + (parseFloat(wr) >= 50 ? 'positive' : 'negative');
+  } else {
+    wrEl.textContent = '--';
+    wrEl.className = 'perf-card-value neutral';
+  }
+
+  var bestEl = document.getElementById('perf-best-trade');
+  if (data.bestTrade) {
+    bestEl.textContent = '+' + data.bestTrade.pnl.toFixed(2);
+    bestEl.title = data.bestTrade.symbol + ' (' + data.bestTrade.pnlPct.toFixed(2) + '%)';
+  } else { bestEl.textContent = '--'; }
+
+  var worstEl = document.getElementById('perf-worst-trade');
+  if (data.worstTrade) {
+    worstEl.textContent = data.worstTrade.pnl.toFixed(2);
+    worstEl.title = data.worstTrade.symbol + ' (' + data.worstTrade.pnlPct.toFixed(2) + '%)';
+  } else { worstEl.textContent = '--'; }
+
+  // Equity curve chart
+  drawEquityCurve(data);
+
+  // Per-symbol table
+  var symTbody = document.getElementById('perf-symbol-tbody');
+  var symKeys = Object.keys(data.symbolStats);
+  if (symKeys.length === 0) {
+    symTbody.innerHTML = '<tr><td colspan="4" class="placeholder-text">Sem dados.</td></tr>';
+  } else {
+    // Sort by P&L desc
+    symKeys.sort(function(a, b) { return data.symbolStats[b].pnl - data.symbolStats[a].pnl; });
+    var symHtml = '';
+    for (var i = 0; i < symKeys.length; i++) {
+      var s = data.symbolStats[symKeys[i]];
+      var wr = s.trades > 0 ? (s.wins / s.trades * 100).toFixed(1) + '%' : '--';
+      var rowCls = s.pnl >= 0 ? 'perf-row-positive' : 'perf-row-negative';
+      symHtml += '<tr class="' + rowCls + '">';
+      symHtml += '<td style="font-weight:600;">' + escapeHtml(symKeys[i]) + '</td>';
+      symHtml += '<td>' + s.trades + '</td>';
+      symHtml += '<td class="' + (s.pnl >= 0 ? 'positive' : 'negative') + '">' + (s.pnl >= 0 ? '+' : '') + s.pnl.toFixed(2) + '</td>';
+      symHtml += '<td>' + wr + '</td>';
+      symHtml += '</tr>';
+    }
+    symTbody.innerHTML = symHtml;
+  }
+
+  // Open positions table
+  var openTbody = document.getElementById('perf-open-tbody');
+  if (data.openPositions.length === 0) {
+    openTbody.innerHTML = '<tr><td colspan="4" class="placeholder-text">Nenhuma posicao aberta.</td></tr>';
+  } else {
+    var openHtml = '';
+    for (var i = 0; i < data.openPositions.length; i++) {
+      var p = data.openPositions[i];
+      openHtml += '<tr>';
+      openHtml += '<td style="font-weight:600;">' + escapeHtml(p.symbol) + '</td>';
+      openHtml += '<td>' + formatPrice(p.price) + '</td>';
+      openHtml += '<td>' + formatNum(p.quantity) + '</td>';
+      openHtml += '<td>' + p.value.toFixed(2) + ' USDT</td>';
+      openHtml += '</tr>';
+    }
+    openTbody.innerHTML = openHtml;
+  }
+
+  // Paired trades table
+  var pairsTbody = document.getElementById('perf-pairs-tbody');
+  if (data.pairs.length === 0) {
+    pairsTbody.innerHTML = '<tr><td colspan="8" class="placeholder-text">Nenhum trade pareado.</td></tr>';
+  } else {
+    var pairsHtml = '';
+    // Show newest first
+    for (var i = data.pairs.length - 1; i >= 0; i--) {
+      var pr = data.pairs[i];
+      var rowCls = pr.pnl >= 0 ? 'perf-row-positive' : 'perf-row-negative';
+      pairsHtml += '<tr class="' + rowCls + '">';
+      pairsHtml += '<td style="font-weight:600;">' + escapeHtml(pr.symbol) + '</td>';
+      pairsHtml += '<td style="font-size:11px;">' + formatPrice(pr.entryPrice) + '<br><span style="color:var(--text-muted);">' + escapeHtml(pr.entryTime) + '</span></td>';
+      pairsHtml += '<td style="font-size:11px;">' + formatPrice(pr.exitPrice) + '<br><span style="color:var(--text-muted);">' + escapeHtml(pr.exitTime) + '</span></td>';
+      pairsHtml += '<td>' + formatNum(pr.quantity) + '</td>';
+      pairsHtml += '<td class="' + (pr.pnl >= 0 ? 'positive' : 'negative') + '" style="font-weight:600;">' + (pr.pnl >= 0 ? '+' : '') + pr.pnl.toFixed(2) + '</td>';
+      pairsHtml += '<td class="' + (pr.pnlPct >= 0 ? 'positive' : 'negative') + '">' + (pr.pnlPct >= 0 ? '+' : '') + pr.pnlPct.toFixed(2) + '%</td>';
+      pairsHtml += '<td>' + formatDuration(pr.duration) + '</td>';
+      pairsHtml += '<td>' + escapeHtml(pr.signal || '--') + '</td>';
+      pairsHtml += '</tr>';
+    }
+    pairsTbody.innerHTML = pairsHtml;
+  }
+}
+
+// =====================================================================
+// INITIALIZATION
+// =====================================================================
+// Relogio no rodape
+function updateFooterClock() {
+  var now = new Date();
+  var d = ('0'+now.getDate()).slice(-2)+'/'+('0'+(now.getMonth()+1)).slice(-2)+'/'+now.getFullYear();
+  var t = ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2)+':'+('0'+now.getSeconds()).slice(-2);
+  document.getElementById('footer-clock').textContent = d + '  ' + t;
+}
+updateFooterClock();
+setInterval(updateFooterClock, 1000);
+
+setTimeout(function() {
+  sendToDelphi('pageReady');
+  appendLog('SYSTEM', 'Interface carregada. Pronto para operar.', formatTime(new Date()));
+}, 200);
+</script>
+</body>
+</html>
