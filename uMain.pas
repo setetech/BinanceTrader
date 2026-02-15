@@ -1846,6 +1846,7 @@ begin
         // Atualiza UI (Synchronize garante valores corretos)
         var LLogAnalise := Format('[%d/%d] %s -> %s | Confianca: %.0f%%',
           [CI + 1, Length(LCoins), LSymbol, SignalToStr(LAnalysis.Signal), LAnalysis.Confidence]);
+        var LLogMotivo := LAnalysis.Reasoning;
         TThread.Synchronize(nil, procedure
         begin
           FSelectedSymbol := LSymbol;
@@ -1859,6 +1860,7 @@ begin
           SendIndicators;
           SendSignal;
           AddLog('Bot', LLogAnalise);
+          AddLog('Bot', 'Motivo: ' + LLogMotivo);
         end);
 
         // 6. Auto-trade
