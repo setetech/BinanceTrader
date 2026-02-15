@@ -36,6 +36,7 @@ type
 
     FTopCoins: TCoinRecoveryArray;
     FSelectedSymbol: string;
+    FBotCoinIndex: Integer;  // Indice de rotacao do bot pelas top coins
     FLastAutoTradeSignal: TTradeSignal;  // Evita trades repetidos no mesmo sinal
     FLastTradeTime: TDictionary<string, TDateTime>;  // Cooldown entre trades por symbol
     FRefreshingWallet: Boolean;
@@ -147,6 +148,7 @@ begin
   FAnalyzing := False;
   FScanning := False;
   FLastAutoTradeSignal := tsHold;
+  FBotCoinIndex := 0;
   FApiKeyValid := False;
   FSelectedSymbol := '';
   FConfig := TJSONObject.Create;
@@ -1113,22 +1115,14 @@ var D: TJSONObject;
 begin
   if FBotRunning then Exit;
   FBotRunning := True;
+  FBotCoinIndex := 0;
   FTimerBot.Interval := Round(GetCfgDbl('botInterval', 300)) * 1000;
   FTimerBot.Enabled := True;
   D := TJSONObject.Create;
   D.AddPair('running', TJSONBool.Create(True));
   SendToJS('botStatus', D);
-  AddLog('Bot', Format('INICIADO - intervalo %ds', [Round(GetCfgDbl('botInterval', 300))]));
+  AddLog('Bot', Format('INICIADO - intervalo %ds | %d moedas no scan', [Round(GetCfgDbl('botInterval', 300)), Length(FTopCoins)]));
   Caption := 'Binance Recovery Bot [BOT ATIVO]';
-
-  // Primeira analise
-  if FSelectedSymbol <> '' then
-    DoAnalyze
-  else if Length(FTopCoins) > 0 then
-  begin
-    DoSelectCoin(FTopCoins[0].Symbol);
-    // Analise sera feita no proximo ciclo do bot
-  end;
 end;
 
 procedure TfrmMain.DoStopBot;
@@ -1716,9 +1710,27 @@ begin
     // Bot: re-scan e analisa a melhor moeda
     if not FScanning then
       DoScan;
-    // Analisa a moeda selecionada (ou a #1 do scan)
-    if FSelectedSymbol <> '' then
+
+    // Rotaciona pelas top coins do scan
+    if Length(FTopCoins) > 0 then
+    begin
+      if FBotCoinIndex >= Length(FTopCoins) then
+        FBotCoinIndex := 0;
+
+      // Seleciona a proxima moeda (apenas seta symbol + notifica JS, sem API extra)
+      var LNextSymbol := FTopCoins[FBotCoinIndex].Symbol;
+      FSelectedSymbol := LNextSymbol;
+      var DSel := TJSONObject.Create;
+      DSel.AddPair('symbol', LNextSymbol);
+      SendToJS('selectedCoin', DSel);
+
+      AddLog('Bot', Format('[%d/%d] %s',
+        [FBotCoinIndex + 1, Length(FTopCoins), LNextSymbol]));
+      Inc(FBotCoinIndex);
+
+      // DoAnalyze ja recarrega candles/indicadores internamente
       DoAnalyze;
+    end;
   end;
 end;
 
