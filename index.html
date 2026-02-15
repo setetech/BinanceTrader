@@ -931,7 +931,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
       <div class="scanner-left">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">&#x1F3C6; Top Recovery Coins</span>
+            <span class="card-title" id="scanner-title">&#x1F3C6; Top Recovery Coins (24h)</span>
             <div style="display:flex;align-items:center;gap:10px;">
               <span id="last-scan-time" style="font-size:11px;color:var(--text-muted);"></span>
               <button class="btn btn-accent btn-sm" id="btn-scan" onclick="doScan()">&#x1F504; Scan Now</button>
@@ -943,7 +943,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 <th>#</th>
                 <th>Moeda</th>
                 <th>Preco</th>
-                <th>Variacao 24h</th>
+                <th id="th-variation">Variacao 24h</th>
                 <th>Volume</th>
                 <th>Acao</th>
               </tr>
@@ -1124,6 +1124,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               </tbody>
             </table>
           </div>
+          <div id="trade-error-banner" style="display:none;background:rgba(246,70,93,0.15);border:1px solid var(--red);color:var(--red);padding:8px 12px;border-radius:6px;margin-top:8px;font-size:12px;word-break:break-word;"></div>
         </div>
       </div>
     </div>
@@ -1135,20 +1136,34 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           <div class="card-header">
             <span class="card-title">&#x1F511; Binance API</span>
           </div>
-          <div class="input-group">
-            <label>API Key</label>
-            <input type="password" id="cfg-apiKey" placeholder="Sua API Key da Binance">
-          </div>
-          <div class="input-group">
-            <label>Secret Key</label>
-            <input type="password" id="cfg-secretKey" placeholder="Sua Secret Key">
-          </div>
-          <div class="toggle-wrapper">
+          <div class="toggle-wrapper" style="margin-bottom:12px;">
             <div>
-              <div style="font-size:13px;font-weight:600;">Testnet</div>
-              <div style="font-size:11px;color:var(--text-muted);">Usar rede de teste da Binance</div>
+              <div style="font-size:13px;font-weight:600;">Modo de Operacao</div>
+              <div style="font-size:11px;color:var(--text-muted);" id="cfg-mode-label">Testnet (rede de teste)</div>
             </div>
-            <div class="toggle-switch" id="cfg-testnet" onclick="toggleConfigSwitch('cfg-testnet')"></div>
+            <div class="toggle-switch" id="cfg-testnet" onclick="toggleConfigSwitch('cfg-testnet'); updateApiKeyVisibility();"></div>
+          </div>
+          <div id="keys-testnet-group">
+            <div style="font-size:11px;font-weight:600;color:#f0b90b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Chaves Testnet</div>
+            <div class="input-group">
+              <label>API Key (Testnet)</label>
+              <input type="password" id="cfg-apiKeyTest" placeholder="API Key da Testnet">
+            </div>
+            <div class="input-group">
+              <label>Secret Key (Testnet)</label>
+              <input type="password" id="cfg-secretKeyTest" placeholder="Secret Key da Testnet">
+            </div>
+          </div>
+          <div id="keys-prod-group">
+            <div style="font-size:11px;font-weight:600;color:#0ecb81;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Chaves Producao</div>
+            <div class="input-group">
+              <label>API Key (Producao)</label>
+              <input type="password" id="cfg-apiKeyProd" placeholder="API Key de Producao">
+            </div>
+            <div class="input-group">
+              <label>Secret Key (Producao)</label>
+              <input type="password" id="cfg-secretKeyProd" placeholder="Secret Key de Producao">
+            </div>
           </div>
           <button class="btn btn-outline" style="margin-top:8px;" onclick="doTestConnection()">&#x1F50C; Testar Conexao</button>
         </div>
@@ -1205,12 +1220,27 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <input type="number" id="cfg-botInterval" placeholder="60" step="1" min="5">
           </div>
           <div class="input-group">
+            <label>Modo de Scan</label>
+            <select id="cfg-scanMode" onchange="updateScanModeUI()">
+              <option value="recovery">Recuperacao (moedas em alta)</option>
+              <option value="volume">Volume (mais negociadas)</option>
+            </select>
+          </div>
+          <div class="input-group" id="group-recoveryHours">
+            <label>Periodo de Recuperacao (horas)</label>
+            <input type="number" id="cfg-recoveryHours" placeholder="24" step="1" min="1" max="168">
+          </div>
+          <div class="input-group">
             <label>Moedas no Scanner (top N)</label>
             <input type="number" id="cfg-topCoins" placeholder="30" step="1" min="1" max="100">
           </div>
           <div class="input-group">
             <label>Timeout Lateralizacao (horas)</label>
             <input type="number" id="cfg-lateralTimeout" placeholder="24" step="1" min="1" max="168">
+          </div>
+          <div class="input-group">
+            <label>Cooldown entre Trades (minutos)</label>
+            <input type="number" id="cfg-tradeCooldown" placeholder="30" step="5" min="5" max="1440">
           </div>
           <div class="input-group">
             <label>Snapshot Carteira (minutos)</label>
@@ -1268,9 +1298,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <span class="chevron">&#x25BC;</span>
           </div>
           <div class="help-section-body">
-            <p>O <strong>Binance Recovery Bot</strong> e um robo de trading automatizado que identifica as <strong>N melhores moedas em recuperacao</strong> (configuravel, padrao 30) nas ultimas 24 horas no mercado da Binance, analisa indicadores tecnicos e utiliza Inteligencia Artificial para recomendar operacoes de compra e venda.</p>
+            <p>O <strong>Binance Recovery Bot</strong> e um robo de trading automatizado que identifica as <strong>N melhores moedas em recuperacao</strong> (configuravel) em um periodo configuravel (padrao 24h) no mercado da Binance, analisa indicadores tecnicos e utiliza Inteligencia Artificial para recomendar operacoes de compra e venda.</p>
 
-            <div class="help-tip">&#x1F4A1; "Recuperacao" significa moedas que tiveram valorizacao positiva nas ultimas 24h, com volume significativo (acima de 1 milhao USDT), indicando que o mercado esta comprando ativamente.</div>
+            <div class="help-tip">&#x1F4A1; "Recuperacao" significa moedas que tiveram valorizacao positiva no periodo configurado, com volume significativo (acima de 1 milhao USDT), indicando que o mercado esta comprando ativamente.</div>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Entendendo os Pares de Trading:</p>
+            <p>Os pares sao exibidos no formato <strong>BASE-QUOTE</strong> (ex: <strong>BTC-USDT</strong>):</p>
+            <table class="help-table">
+              <tr><th>Parte</th><th>Significado</th><th>Exemplo</th></tr>
+              <tr><td><strong>BASE</strong> (esquerda)</td><td>O ativo que voce compra ou vende</td><td>BTC, ETH, MUBARAK</td></tr>
+              <tr><td><strong>QUOTE</strong> (direita)</td><td>A moeda usada para pagar</td><td>USDT (dolar digital)</td></tr>
+            </table>
+            <p style="margin-top:8px;font-size:12px;color:var(--text-muted);">Quando o bot exibe "MUBARAK-USDT | Compra", significa que gastou <strong>USDT</strong> para comprar tokens <strong>MUBARAK</strong>. Na venda, voce vende MUBARAK e recebe USDT de volta.</p>
 
             <p style="margin-top:14px;font-weight:600;color:var(--accent);">Fluxo de operacao:</p>
             <div class="help-flow">
@@ -1287,7 +1326,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
             <table class="help-table" style="margin-top:16px;">
               <tr><th>Funcionalidade</th><th>Descricao</th></tr>
-              <tr><td><strong>Scanner</strong></td><td>Escaneia todos os pares USDT na Binance e seleciona os N melhores com maior variacao positiva em 24h (N configuravel em Configuracoes)</td></tr>
+              <tr><td><strong>Scanner</strong></td><td>Escaneia todos os pares USDT na Binance e seleciona os N melhores com maior variacao positiva no periodo configurado (quantidade e periodo configuraveis em Configuracoes)</td></tr>
               <tr><td><strong>Grafico Candlestick</strong></td><td>Exibe os ultimos 50 candles da moeda selecionada com Open, High, Low, Close e Volume</td></tr>
               <tr><td><strong>Indicadores Tecnicos</strong></td><td>RSI, MACD, SMA, EMA, Bollinger Bands, ATR - calculados automaticamente</td></tr>
               <tr><td><strong>Analise IA</strong></td><td>Envia indicadores para um LLM (GPT, Claude, DeepSeek) que retorna sinal, confianca e precos sugeridos</td></tr>
@@ -1321,7 +1360,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
             <div class="help-param">
               <div class="help-param-name">&#x1F504; Botao "Scan Now"</div>
-              <div class="help-param-desc">Forca um scan imediato do mercado. O scan automatico ocorre a cada <strong>60 segundos</strong>. O scan consulta o endpoint <strong>/api/v3/ticker/24hr</strong> da Binance, filtra pares USDT com volume &gt; 1M, remove os que estao em queda, e ordena por variacao decrescente.</div>
+              <div class="help-param-desc">Forca um scan imediato do mercado. O scan automatico ocorre a cada <strong>60 segundos</strong>. O scan consulta a API da Binance com o periodo de recuperacao configurado (padrao 24h), filtra pares USDT com volume significativo, remove os que estao em queda, e ordena por variacao decrescente. Para periodos diferentes de 24h, o sistema faz consultas em lote usando a API <strong>/v3/ticker</strong> com janela customizada.</div>
             </div>
 
             <p style="margin-top:16px;font-weight:600;">&#x1F4C8; Painel Direito &mdash; Detalhes da Moeda</p>
@@ -1571,9 +1610,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 <br><br>
                 <div class="help-tip">
                   <strong>&#x1F4A1; Este e o cenario que o bot procura!</strong><br>
-                  O Scanner busca moedas com <strong>variacao positiva em 24h</strong> (recuperacao). A ideia e:
-                  <br>1. A moeda caiu bastante (dias anteriores)
-                  <br>2. Comecou a se recuperar (variacao +% nas ultimas 24h)
+                  O Scanner busca moedas com <strong>variacao positiva no periodo configurado</strong> (padrao 24h, ajustavel em Configuracoes). A ideia e:
+                  <br>1. A moeda caiu bastante (periodo anterior)
+                  <br>2. Comecou a se recuperar (variacao +% no periodo selecionado)
                   <br>3. Os indicadores confirmam que a reversao esta acontecendo (RSI baixo + MACD cruzando + Bollinger inferior)
                   <br>4. O bot compra na confirmacao e coloca stop loss para proteger
                   <br><br>
@@ -1696,7 +1735,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <div class="help-param">
               <div class="help-param-name">&#x1F4C3; Historico de Trades</div>
               <div class="help-param-desc">
-                Tabela com todas as ordens executadas na sessao atual, mostrando: data/hora, par, lado (compra/venda), preco, quantidade, sinal da IA que gerou o trade, confianca e ID da ordem na Binance.
+                Tabela com todas as ordens executadas, mostrando: data/hora, par (formato BASE-QUOTE), lado (compra/venda), preco, quantidade, sinal da IA que gerou o trade e confianca. Os trades sao <strong>persistidos em banco de dados SQLite</strong> e sobrevivem ao reiniciar o programa. Cada modo (Testnet/Producao) tem seu proprio banco de dados independente.
               </div>
             </div>
           </div>
@@ -1713,36 +1752,33 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <p style="font-weight:600;color:var(--accent);font-size:14px;margin-bottom:10px;">&#x1F511; Binance API</p>
 
             <div class="help-param">
-              <div class="help-param-name">API Key <span class="badge required">Obrigatorio</span></div>
+              <div class="help-param-name">Modo de Operacao (Testnet / Producao)</div>
               <div class="help-param-desc">
-                Chave publica da sua conta Binance. Necessaria para consultar precos, saldos e executar ordens.
-                <br><strong>Como obter:</strong> Binance &gt; Configuracoes &gt; Gerenciamento de API &gt; Criar API
-                <br><strong>Permissoes necessarias:</strong> Leitura + Spot Trading (para executar ordens)
+                O sistema suporta <strong>dois conjuntos de chaves API</strong> independentes:
+                <br>&#x2022; <strong>Testnet (padrao):</strong> Usa a rede de teste (<strong>testnet.binance.vision</strong>). Trades sao simulados, sem dinheiro real. Gere suas chaves em <strong>testnet.binance.vision</strong>.
+                <br>&#x2022; <strong>Producao:</strong> Usa a rede real (<strong>api.binance.com</strong>). Trades sao executados com dinheiro REAL.
+                <br><br>Cada modo tem seu proprio <strong>banco de dados SQLite separado</strong> (trades, posicoes e snapshots nao se misturam entre os modos). Ao alternar o modo, os dados do modo selecionado sao carregados automaticamente.
               </div>
             </div>
 
             <div class="help-param">
-              <div class="help-param-name">Secret Key <span class="badge required">Obrigatorio</span></div>
+              <div class="help-param-name">API Key e Secret Key <span class="badge required">Obrigatorio</span></div>
               <div class="help-param-desc">
-                Chave secreta que assina suas requisicoes. <strong>Nunca compartilhe esta chave.</strong>
-                <br>Mostrada apenas uma vez ao criar a API. Se perder, gere uma nova.
-              </div>
-            </div>
-
-            <div class="help-param">
-              <div class="help-param-name">Testnet <span class="badge optional">Recomendado</span></div>
-              <div class="help-param-desc">
-                Quando ativado, o sistema usa a rede de teste da Binance (<strong>testnet.binance.vision</strong>) em vez da rede real.
-                <br>&#x2022; <strong>Ativado (padrao):</strong> Trades sao simulados, sem dinheiro real envolvido
-                <br>&#x2022; <strong>Desativado:</strong> Trades sao executados com dinheiro REAL na Binance
-                <br><br><strong>Dica:</strong> Sempre teste suas estrategias na Testnet primeiro. As chaves da Testnet sao diferentes das chaves de producao.
+                Cada modo (Testnet e Producao) tem seus proprios campos de API Key e Secret Key.
+                <br>&#x2022; <strong>API Key:</strong> Chave publica da sua conta. <strong>Como obter:</strong> Binance &gt; Configuracoes &gt; Gerenciamento de API &gt; Criar API
+                <br>&#x2022; <strong>Secret Key:</strong> Chave secreta que assina requisicoes. <strong>Nunca compartilhe.</strong> Mostrada apenas uma vez ao criar.
+                <br>&#x2022; <strong>Permissoes necessarias:</strong> Leitura + Spot Trading
+                <br><br><strong>Importante:</strong> As chaves da Testnet e da Producao sao diferentes! Chaves da Testnet nao funcionam na Producao e vice-versa.
               </div>
             </div>
 
             <div class="help-param">
               <div class="help-param-name">&#x1F50C; Testar Conexao</div>
               <div class="help-param-desc">
-                Faz um ping no servidor da Binance para verificar se as credenciais estao corretas e o servidor esta acessivel. Se bem-sucedido, tambem consulta o saldo da conta.
+                Testa a conexao de rede (ping) e valida a API Key (consulta autenticada em /v3/account). Mostra resultado no indicador superior:
+                <br>&#x2022; <strong style="color:var(--green);">Conectado:</strong> Rede OK e API Key validada com sucesso
+                <br>&#x2022; <strong style="color:var(--red);">API Key Invalida:</strong> Conexao OK mas a chave foi rejeitada
+                <br>&#x2022; <strong style="color:var(--red);">Desconectado:</strong> Falha na conexao de rede
               </div>
             </div>
 
@@ -1864,6 +1900,63 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             </div>
 
             <div class="help-param">
+              <div class="help-param-name">Modo de Scan</div>
+              <div class="help-param-desc">
+                Define como o scanner seleciona moedas para analise.
+                <br><br>&#x2022; <strong>Recuperacao:</strong> Busca moedas com maior variacao positiva no periodo configurado. Ideal para identificar ativos em recuperacao apos quedas.
+                <br>&#x2022; <strong>Volume:</strong> Busca as moedas mais negociadas (maior volume em USDT). Inclui moedas em qualquer direcao (alta ou baixa), priorizando liquidez. Ideal quando combinado com confianca minima alta (70%+).
+                <br><br><strong>Padrao:</strong> Recuperacao
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Periodo de Recuperacao (horas)</div>
+              <div class="help-param-desc">
+                Janela de tempo usada pelo scanner para calcular a variacao de preco das moedas. <strong>Visivel apenas no modo Recuperacao.</strong>
+                <br><strong>Padrao:</strong> 24 horas
+                <br><strong>Minimo:</strong> 1 hora | <strong>Maximo:</strong> 168 horas (7 dias)
+                <br><br>&#x2022; <strong>1-4h:</strong> Recuperacoes rapidas (scalping) &mdash; mais sinais, mais ruido
+                <br>&#x2022; <strong>12-24h:</strong> Recuperacoes de curto prazo (padrao recomendado)
+                <br>&#x2022; <strong>48-168h:</strong> Recuperacoes de medio prazo &mdash; tendencias mais solidas
+                <br><br>O titulo do scanner e o cabecalho da tabela atualizam automaticamente para refletir o periodo selecionado (ex: "Top Recovery Coins (4h)").
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Moedas no Scanner (top N)</div>
+              <div class="help-param-desc">
+                Quantidade de moedas exibidas no ranking de recuperacao do scanner.
+                <br><strong>Padrao:</strong> 30
+                <br><strong>Minimo:</strong> 1 | <strong>Maximo:</strong> 100
+                <br>Valores maiores mostram mais opcoes mas podem incluir moedas com recuperacao fraca.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Timeout Lateralizacao (horas)</div>
+              <div class="help-param-desc">
+                Tempo maximo que uma posicao aberta pode ficar sem movimento significativo (&lt;3% de variacao) antes do bot vender automaticamente para liberar capital. Veja a secao "Timeout de Lateralizacao" para detalhes completos.
+                <br><strong>Padrao:</strong> 24 horas | <strong>Min:</strong> 1h | <strong>Max:</strong> 168h
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Cooldown entre Trades (minutos)</div>
+              <div class="help-param-desc">
+                Tempo minimo de espera entre operacoes (compra ou venda) no mesmo par de moedas. Evita que o bot fique comprando e vendendo rapidamente quando os indicadores oscilam na fronteira entre sinais.
+                <br><strong>Padrao:</strong> 30 min | <strong>Min:</strong> 5 min | <strong>Max:</strong> 1440 min (24h)
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Snapshot Carteira (minutos)</div>
+              <div class="help-param-desc">
+                Intervalo em minutos entre cada snapshot automatico do valor total da carteira. Os snapshots sao salvos no banco de dados e usados para gerar o grafico de evolucao na aba Carteira.
+                <br><strong>Padrao:</strong> 30 minutos | <strong>Min:</strong> 5 min | <strong>Max:</strong> 1440 min (24h)
+              </div>
+            </div>
+
+            <div class="help-param">
               <div class="help-param-name">Auto-Trade <span class="badge danger">Cuidado</span></div>
               <div class="help-param-desc">
                 Quando ativado, o bot executa ordens de compra e venda automaticamente baseado nos sinais da IA.
@@ -1898,6 +1991,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <table class="help-table">
               <tr><th>Parametro</th><th>Padrao</th><th>Descricao</th></tr>
               <tr><td><strong>Timeout Lateralizacao</strong></td><td>24 horas</td><td>Tempo maximo que uma posicao pode ficar aberta sem movimento significativo</td></tr>
+              <tr><td><strong>Cooldown entre Trades</strong></td><td>30 minutos</td><td>Tempo minimo entre operacoes no mesmo par. Evita que o bot compre e venda rapidamente no mesmo ativo</td></tr>
               <tr><td><strong>Limiar de variacao</strong></td><td>3%</td><td>Se a variacao absoluta do preco desde a compra for menor que 3%, considera-se lateral</td></tr>
             </table>
 
@@ -1948,6 +2042,91 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             </table>
 
             <div class="help-tip">&#x1F4A1; O log e essencial para depurar problemas. Se algo nao funcionar, verifique as mensagens de ERRO no log. O log mantem ate 500 entradas na sessao.</div>
+          </div>
+        </div>
+
+        <!-- ===== ABA CARTEIRA ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4B0; Aba Carteira
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>Visao consolidada de todos os ativos da sua conta Binance com valores convertidos para USDT.</p>
+
+            <div class="help-param">
+              <div class="help-param-name">Saldos por Ativo</div>
+              <div class="help-param-desc">
+                Tabela com todos os ativos que possuem saldo, mostrando: ativo, quantidade livre, quantidade bloqueada e valor estimado em USDT.
+                <br>A conversao para USDT e feita usando o preco atual de mercado de cada par.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Total em USDT</div>
+              <div class="help-param-desc">
+                Soma de todos os ativos convertidos para USDT. Inclui stablecoins (USDT, USDC, BUSD, FDUSD) e cripto convertida via preco de mercado.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Grafico de Evolucao</div>
+              <div class="help-param-desc">
+                Mini grafico mostrando a evolucao do valor total da carteira ao longo do tempo, baseado nos <strong>snapshots automaticos</strong>.
+                <br>Snapshots sao salvos periodicamente (intervalo configuravel em Configuracoes, padrao 30 min) e persistem no banco de dados entre sessoes.
+              </div>
+            </div>
+
+            <div class="help-tip">&#x1F4A1; Use o botao "Atualizar" para forcar uma atualizacao imediata dos saldos e gerar um novo snapshot.</div>
+          </div>
+        </div>
+
+        <!-- ===== ABA DESEMPENHO ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4CA; Aba Desempenho
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>Metricas detalhadas de performance do bot, calculadas a partir do historico de trades persistido.</p>
+
+            <div class="help-param">
+              <div class="help-param-name">Cards de Resumo</div>
+              <div class="help-param-desc">
+                &#x2022; <strong>Total de Trades:</strong> Quantidade total de ordens executadas (compras + vendas)
+                <br>&#x2022; <strong>P&amp;L Total:</strong> Lucro/prejuizo total em USDT (verde = lucro, vermelho = prejuizo)
+                <br>&#x2022; <strong>Win Rate:</strong> Percentual de trades lucrativos (calculado dos trades pareados compra-venda)
+                <br>&#x2022; <strong>Melhor/Pior Trade:</strong> Maior lucro e maior prejuizo individual
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Curva de Equity</div>
+              <div class="help-param-desc">
+                Grafico mostrando a evolucao acumulada do P&amp;L ao longo do tempo. Cada ponto representa o lucro/prejuizo acumulado apos cada trade pareado (compra + venda).
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Desempenho por Moeda</div>
+              <div class="help-param-desc">
+                Tabela agrupando os resultados por par (ex: BTC-USDT), mostrando: quantidade de trades, P&amp;L total e win rate por moeda. Ordenado por P&amp;L decrescente.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Posicoes Abertas</div>
+              <div class="help-param-desc">
+                Lista de compras que ainda nao foram vendidas. Mostra o par, preco de entrada, quantidade e valor estimado atual. As posicoes abertas sao <strong>persistidas no banco de dados</strong> e sobrevivem ao reiniciar o programa.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Trades Pareados</div>
+              <div class="help-param-desc">
+                Tabela detalhada de cada operacao completa (compra + venda casadas), mostrando: par, preco de entrada e saida, quantidade, P&amp;L em USDT, P&amp;L percentual, duracao e sinal que gerou o trade.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2202,6 +2381,8 @@ var state = {
   analyzing: false,
   trades: [],
   walletSnapshots: [],
+  scanMode: 'recovery',
+  recoveryHours: 24,
   balance: {
     baseAsset: '--',
     quoteAsset: 'USDT',
@@ -2286,6 +2467,7 @@ function handleDelphiMessage(msg) {
     case 'walletData':      onWalletData(data); break;
     case 'walletLoading':   onWalletLoading(data); break;
     case 'loadTrades':      onLoadTrades(data); break;
+    case 'tradeError':      onTradeError(data); break;
     case 'walletSnapshots': onWalletSnapshots(data); break;
     case 'walletSnapshotAdd': onWalletSnapshotAdd(data); break;
     default: break;
@@ -2356,6 +2538,9 @@ function onAddTrade(data) {
   state.trades.unshift(data);
   renderTrades();
   playTradeSound(data.side || 'BUY');
+  // Limpar banner de erro ao trade bem sucedido
+  var banner = document.getElementById('trade-error-banner');
+  if (banner) banner.style.display = 'none';
   // Update performance tab if it's active
   var perfPanel = document.querySelector('[data-tab-panel="performance"]');
   if (perfPanel && perfPanel.classList.contains('active')) {
@@ -2374,6 +2559,15 @@ function onLoadTrades(data) {
   renderTrades();
 }
 
+function onTradeError(data) {
+  var banner = document.getElementById('trade-error-banner');
+  if (!banner) return;
+  banner.textContent = data.message || 'Erro desconhecido no trade';
+  banner.style.display = 'block';
+  // Auto-hide apos 15s
+  setTimeout(function() { banner.style.display = 'none'; }, 15000);
+}
+
 function onConnectionStatus(data) {
   state.connected = data.connected;
   state.testnet = data.testnet;
@@ -2384,9 +2578,14 @@ function onConnectionStatus(data) {
   if (data.connected) {
     dot.className = 'status-dot online';
     text.textContent = 'Conectado';
+  } else if (data.authOK === false && data.connected === false) {
+    dot.className = 'status-dot offline';
+    text.textContent = 'API Key Invalida';
+    text.style.color = 'var(--red)';
   } else {
     dot.className = 'status-dot offline';
     text.textContent = 'Desconectado';
+    text.style.color = '';
   }
 
   if (data.testnet) {
@@ -2435,8 +2634,10 @@ function onAnalyzing(data) {
 }
 
 function onLoadConfig(data) {
-  setInputVal('cfg-apiKey', data.apiKey);
-  setInputVal('cfg-secretKey', data.secretKey);
+  setInputVal('cfg-apiKeyTest', data.apiKeyTest);
+  setInputVal('cfg-secretKeyTest', data.secretKeyTest);
+  setInputVal('cfg-apiKeyProd', data.apiKeyProd);
+  setInputVal('cfg-secretKeyProd', data.secretKeyProd);
   setToggle('cfg-testnet', data.testnet);
   setInputVal('cfg-aiKey', data.aiKey);
   setInputVal('cfg-aiModel', data.aiModel);
@@ -2446,11 +2647,65 @@ function onLoadConfig(data) {
   setInputVal('cfg-takeProfit', data.takeProfit);
   setInputVal('cfg-minConfidence', data.minConfidence);
   setInputVal('cfg-botInterval', data.botInterval);
+  setInputVal('cfg-recoveryHours', data.recoveryHours);
   setInputVal('cfg-topCoins', data.topCoins);
   setInputVal('cfg-lateralTimeout', data.lateralTimeout);
+  setInputVal('cfg-tradeCooldown', data.tradeCooldown);
   setInputVal('cfg-snapshotInterval', data.snapshotInterval);
   setToggle('cfg-autoTrade', data.autoTrade);
   setInputVal('cfg-interval', data.interval);
+  // Scan mode
+  var selMode = document.getElementById('cfg-scanMode');
+  if (selMode && data.scanMode) selMode.value = data.scanMode;
+  state.scanMode = data.scanMode || 'recovery';
+  state.recoveryHours = parseInt(data.recoveryHours) || 24;
+  updateApiKeyVisibility();
+  updateScanModeUI();
+  updateRecoveryLabel();
+}
+
+function updateScanModeUI() {
+  var mode = (document.getElementById('cfg-scanMode') || {}).value || 'recovery';
+  state.scanMode = mode;
+  var grp = document.getElementById('group-recoveryHours');
+  if (grp) grp.style.display = (mode === 'recovery') ? '' : 'none';
+  updateRecoveryLabel();
+}
+
+function updateRecoveryLabel() {
+  var mode = state.scanMode || 'recovery';
+  var th = document.getElementById('th-variation');
+  var title = document.getElementById('scanner-title');
+
+  if (mode === 'volume') {
+    if (th) th.textContent = 'Variacao 24h';
+    if (title) title.innerHTML = '&#x1F4CA; Top Coins por Volume';
+  } else {
+    var h = state.recoveryHours || 24;
+    var label;
+    if (h < 24) label = h + 'h';
+    else { var d = Math.floor(h / 24); label = d + 'd'; }
+    if (th) th.textContent = 'Variacao ' + label;
+    if (title) title.innerHTML = '&#x1F3C6; Top Recovery Coins (' + label + ')';
+  }
+}
+
+function updateApiKeyVisibility() {
+  var isTestnet = getToggle('cfg-testnet');
+  var testGrp = document.getElementById('keys-testnet-group');
+  var prodGrp = document.getElementById('keys-prod-group');
+  var label = document.getElementById('cfg-mode-label');
+  if (isTestnet) {
+    testGrp.style.opacity = '1';
+    prodGrp.style.opacity = '0.4';
+    if (label) label.textContent = 'Testnet (rede de teste)';
+  } else {
+    testGrp.style.opacity = '0.4';
+    prodGrp.style.opacity = '1';
+    if (label) label.textContent = 'Producao (dinheiro real!)';
+    if (label) label.style.color = '#f6465d';
+  }
+  if (isTestnet) { if (label) label.style.color = 'var(--text-muted)'; }
 }
 
 function onScanProgress(data) {
@@ -2505,8 +2760,10 @@ function doTestConnection() {
 
 function doSaveConfig() {
   var cfg = {
-    apiKey: getInputVal('cfg-apiKey'),
-    secretKey: getInputVal('cfg-secretKey'),
+    apiKeyTest: getInputVal('cfg-apiKeyTest'),
+    secretKeyTest: getInputVal('cfg-secretKeyTest'),
+    apiKeyProd: getInputVal('cfg-apiKeyProd'),
+    secretKeyProd: getInputVal('cfg-secretKeyProd'),
     testnet: getToggle('cfg-testnet'),
     aiKey: getInputVal('cfg-aiKey'),
     aiModel: getInputVal('cfg-aiModel'),
@@ -2516,12 +2773,18 @@ function doSaveConfig() {
     takeProfit: parseFloat(getInputVal('cfg-takeProfit')) || 3,
     minConfidence: parseFloat(getInputVal('cfg-minConfidence')) || 70,
     botInterval: parseInt(getInputVal('cfg-botInterval'), 10) || 60,
+    scanMode: (document.getElementById('cfg-scanMode') || {}).value || 'recovery',
+    recoveryHours: parseInt(getInputVal('cfg-recoveryHours'), 10) || 24,
     topCoins: parseInt(getInputVal('cfg-topCoins'), 10) || 30,
     lateralTimeout: parseInt(getInputVal('cfg-lateralTimeout'), 10) || 24,
+    tradeCooldown: parseInt(getInputVal('cfg-tradeCooldown'), 10) || 30,
     snapshotInterval: parseInt(getInputVal('cfg-snapshotInterval'), 10) || 30,
     autoTrade: getToggle('cfg-autoTrade'),
     interval: getInputVal('cfg-interval')
   };
+  state.scanMode = cfg.scanMode;
+  state.recoveryHours = cfg.recoveryHours;
+  updateScanModeUI();
   sendToDelphi('saveConfig', cfg);
 }
 
@@ -2578,7 +2841,7 @@ function selectCoinUI(symbol) {
 function renderCoinsTable() {
   var tbody = document.getElementById('coins-tbody');
   if (state.coins.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text">Clique em "Scan Now" para buscar as moedas com melhor recuperacao.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text">Clique em "Scan Now" para buscar moedas.</td></tr>';
     return;
   }
 
@@ -2593,7 +2856,7 @@ function renderCoinsTable() {
 
     html += '<tr class="' + rowClass + '" onclick="doSelectCoin(\'' + escapeAttr(coin.symbol) + '\')">';
     html += '<td>' + (i + 1) + '</td>';
-    html += '<td style="font-weight:600;color:var(--accent);">' + escapeHtml(coin.symbol) + '</td>';
+    html += '<td style="font-weight:600;color:var(--accent);">' + escapeHtml(formatSymbol(coin.symbol)) + '</td>';
     html += '<td>' + formatPrice(coin.price) + '</td>';
     html += '<td class="' + changeClass + '">' + changePrefix + change.toFixed(2) + '%</td>';
     html += '<td>' + formatVolume(coin.quoteVolume || coin.volume) + '</td>';
@@ -2716,10 +2979,10 @@ function renderTrades() {
 
     html += '<tr>';
     html += '<td style="font-size:11px;">' + escapeHtml(time) + '</td>';
-    html += '<td style="font-weight:600;">' + escapeHtml(t.symbol || '') + '</td>';
+    html += '<td style="font-weight:600;">' + escapeHtml(formatSymbol(t.symbol)) + '</td>';
     html += '<td class="' + sideClass + '">' + sideLabel + '</td>';
     html += '<td>' + formatPrice(t.price) + '</td>';
-    html += '<td>' + formatNum(t.quantity) + '</td>';
+    html += '<td>' + formatQty(t.quantity) + '</td>';
     html += '<td>' + escapeHtml(t.signal || '--') + ' (' + (t.confidence != null ? parseFloat(t.confidence).toFixed(0) + '%' : '--') + ')</td>';
     html += '</tr>';
   }
@@ -3095,12 +3358,36 @@ function formatNum(val) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
 }
 
+function formatQty(val) {
+  if (val == null || val === '') return '0';
+  var n = parseFloat(val);
+  if (isNaN(n)) return '0';
+  var dec;
+  if (Math.abs(n) >= 1000000) dec = 0;
+  else if (Math.abs(n) >= 1000) dec = 2;
+  else if (Math.abs(n) >= 1) dec = 4;
+  else if (Math.abs(n) >= 0.001) dec = 6;
+  else dec = 8;
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: dec });
+}
+
 function formatTime(date) {
   if (!date || isNaN(date.getTime())) return '--';
   var h = String(date.getHours()).padStart(2, '0');
   var m = String(date.getMinutes()).padStart(2, '0');
   var s = String(date.getSeconds()).padStart(2, '0');
   return h + ':' + m + ':' + s;
+}
+
+function formatSymbol(sym) {
+  if (!sym) return '';
+  var quotes = ['USDT','BUSD','USDC','FDUSD','BTC','ETH','BNB'];
+  for (var i = 0; i < quotes.length; i++) {
+    if (sym.endsWith(quotes[i]) && sym.length > quotes[i].length) {
+      return sym.slice(0, -quotes[i].length) + '-' + quotes[i];
+    }
+  }
+  return sym;
 }
 
 function escapeHtml(text) {
@@ -3128,7 +3415,7 @@ function setInputVal(id, val) {
 
 function getInputVal(id) {
   var el = document.getElementById(id);
-  return el ? el.value : '';
+  return el ? el.value.trim() : '';
 }
 
 function setToggle(id, active) {
@@ -3619,13 +3906,13 @@ function renderPerformance() {
   var bestEl = document.getElementById('perf-best-trade');
   if (data.bestTrade) {
     bestEl.textContent = '+' + data.bestTrade.pnl.toFixed(2);
-    bestEl.title = data.bestTrade.symbol + ' (' + data.bestTrade.pnlPct.toFixed(2) + '%)';
+    bestEl.title = formatSymbol(data.bestTrade.symbol) + ' (' + data.bestTrade.pnlPct.toFixed(2) + '%)';
   } else { bestEl.textContent = '--'; }
 
   var worstEl = document.getElementById('perf-worst-trade');
   if (data.worstTrade) {
     worstEl.textContent = data.worstTrade.pnl.toFixed(2);
-    worstEl.title = data.worstTrade.symbol + ' (' + data.worstTrade.pnlPct.toFixed(2) + '%)';
+    worstEl.title = formatSymbol(data.worstTrade.symbol) + ' (' + data.worstTrade.pnlPct.toFixed(2) + '%)';
   } else { worstEl.textContent = '--'; }
 
   // Equity curve chart
@@ -3645,7 +3932,7 @@ function renderPerformance() {
       var wr = s.trades > 0 ? (s.wins / s.trades * 100).toFixed(1) + '%' : '--';
       var rowCls = s.pnl >= 0 ? 'perf-row-positive' : 'perf-row-negative';
       symHtml += '<tr class="' + rowCls + '">';
-      symHtml += '<td style="font-weight:600;">' + escapeHtml(symKeys[i]) + '</td>';
+      symHtml += '<td style="font-weight:600;">' + escapeHtml(formatSymbol(symKeys[i])) + '</td>';
       symHtml += '<td>' + s.trades + '</td>';
       symHtml += '<td class="' + (s.pnl >= 0 ? 'positive' : 'negative') + '">' + (s.pnl >= 0 ? '+' : '') + s.pnl.toFixed(2) + '</td>';
       symHtml += '<td>' + wr + '</td>';
@@ -3663,9 +3950,9 @@ function renderPerformance() {
     for (var i = 0; i < data.openPositions.length; i++) {
       var p = data.openPositions[i];
       openHtml += '<tr>';
-      openHtml += '<td style="font-weight:600;">' + escapeHtml(p.symbol) + '</td>';
+      openHtml += '<td style="font-weight:600;">' + escapeHtml(formatSymbol(p.symbol)) + '</td>';
       openHtml += '<td>' + formatPrice(p.price) + '</td>';
-      openHtml += '<td>' + formatNum(p.quantity) + '</td>';
+      openHtml += '<td>' + formatQty(p.quantity) + '</td>';
       openHtml += '<td>' + p.value.toFixed(2) + ' USDT</td>';
       openHtml += '</tr>';
     }
@@ -3683,10 +3970,10 @@ function renderPerformance() {
       var pr = data.pairs[i];
       var rowCls = pr.pnl >= 0 ? 'perf-row-positive' : 'perf-row-negative';
       pairsHtml += '<tr class="' + rowCls + '">';
-      pairsHtml += '<td style="font-weight:600;">' + escapeHtml(pr.symbol) + '</td>';
+      pairsHtml += '<td style="font-weight:600;">' + escapeHtml(formatSymbol(pr.symbol)) + '</td>';
       pairsHtml += '<td style="font-size:11px;">' + formatPrice(pr.entryPrice) + '<br><span style="color:var(--text-muted);">' + escapeHtml(pr.entryTime) + '</span></td>';
       pairsHtml += '<td style="font-size:11px;">' + formatPrice(pr.exitPrice) + '<br><span style="color:var(--text-muted);">' + escapeHtml(pr.exitTime) + '</span></td>';
-      pairsHtml += '<td>' + formatNum(pr.quantity) + '</td>';
+      pairsHtml += '<td>' + formatQty(pr.quantity) + '</td>';
       pairsHtml += '<td class="' + (pr.pnl >= 0 ? 'positive' : 'negative') + '" style="font-weight:600;">' + (pr.pnl >= 0 ? '+' : '') + pr.pnl.toFixed(2) + '</td>';
       pairsHtml += '<td class="' + (pr.pnlPct >= 0 ? 'positive' : 'negative') + '">' + (pr.pnlPct >= 0 ? '+' : '') + pr.pnlPct.toFixed(2) + '%</td>';
       pairsHtml += '<td>' + formatDuration(pr.duration) + '</td>';

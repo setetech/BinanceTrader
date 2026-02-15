@@ -16,11 +16,13 @@ type
     procedure Log(const Msg: string);
     function CallLLM(const SystemPrompt, UserPrompt: string): string;
     function ParseResponse(const Resp: string): TAIAnalysis;
-    function BuildPrompt(const Symbol: string; const Ind: TTechnicalIndicators; const C: TCandleArray): string;
+    function BuildPrompt(const Symbol: string; const Ind: TTechnicalIndicators;
+      const C: TCandleArray; HasPosition: Boolean; BuyPrice: Double): string;
   public
     constructor Create(const AApiKey: string; const AModel: string = 'gpt-4o-mini');
     destructor Destroy; override;
-    function AnalyzeMarket(const Symbol: string; const Ind: TTechnicalIndicators; const C: TCandleArray): TAIAnalysis;
+    function AnalyzeMarket(const Symbol: string; const Ind: TTechnicalIndicators;
+      const C: TCandleArray; HasPosition: Boolean = False; BuyPrice: Double = 0): TAIAnalysis;
     property ApiKey: string read FApiKey write FApiKey;
     property Model: string read FModel write FModel;
     property BaseURL: string read FBaseURL write FBaseURL;
@@ -88,19 +90,36 @@ begin
   finally Req.Free; end;
 end;
 
-function TAIEngine.BuildPrompt(const Symbol: string; const Ind: TTechnicalIndicators; const C: TCandleArray): string;
-var S: string; I, Start: Integer;
+function TAIEngine.BuildPrompt(const Symbol: string; const Ind: TTechnicalIndicators;
+  const C: TCandleArray; HasPosition: Boolean; BuyPrice: Double): string;
+var S, PosContext: string; I, Start: Integer;
+    FmtDot: TFormatSettings;
 begin
+  FmtDot.DecimalSeparator := '.';
   S := '';
   Start := Max(0, Length(C)-20);
   for I := Start to High(C) do
     S := S + Format('%.2f, %.2f, %.2f, %.2f, Vol:%.0f'#13#10,
       [C[I].Open, C[I].High, C[I].Low, C[I].Close, C[I].Volume]);
+
+  if HasPosition then
+    PosContext := Format(
+      #13#10'=== POSICAO ABERTA ==='#13#10 +
+      'Temos posicao COMPRADA a $%s. Avalie se e momento de VENDER (SELL/STRONG_SELL) ou manter (HOLD). ' +
+      'NAO retorne BUY/STRONG_BUY pois ja estamos posicionados.',
+      [FormatFloat('0.########', BuyPrice, FmtDot)])
+  else
+    PosContext :=
+      #13#10'=== SEM POSICAO ==='#13#10 +
+      'Nao temos posicao neste ativo. Avalie se e momento de COMPRAR (BUY/STRONG_BUY) ou aguardar (HOLD). ' +
+      'NAO retorne SELL/STRONG_SELL pois nao temos o que vender.';
+
   Result := Format(
     'Analise o par %s.'#13#10#13#10 +
     '=== INDICADORES ==='#13#10'%s'#13#10#13#10 +
-    '=== ULTIMOS CANDLES (O,H,L,C,Vol) ==='#13#10'%s',
-    [Symbol, Ind.ToText, S]);
+    '=== ULTIMOS CANDLES (O,H,L,C,Vol) ==='#13#10'%s' +
+    '%s',
+    [Symbol, Ind.ToText, S, PosContext]);
 end;
 
 function TAIEngine.ParseResponse(const Resp: string): TAIAnalysis;
@@ -138,7 +157,8 @@ begin
   else if (Pos('SELL', U) > 0) or (Pos('VENDA', U) > 0) then Result.Signal := tsSell;
 end;
 
-function TAIEngine.AnalyzeMarket(const Symbol: string; const Ind: TTechnicalIndicators; const C: TCandleArray): TAIAnalysis;
+function TAIEngine.AnalyzeMarket(const Symbol: string; const Ind: TTechnicalIndicators;
+  const C: TCandleArray; HasPosition: Boolean; BuyPrice: Double): TAIAnalysis;
 const
   SYS_PROMPT =
     'Voce e um analista de trading de criptomoedas experiente. '#13#10 +
@@ -147,12 +167,14 @@ const
     '"reasoning":"explicacao","entry_price":0,"stop_loss":0,"take_profit":0}'#13#10 +
     'Regras: RSI<30=sobrevendido, RSI>70=sobrecomprado, MACD acima signal=compra, ' +
     'SMA20>SMA50=alta, preco<BollingerInf=bounce, ATR para stop loss, risco/retorno 1:2 minimo. ' +
+    'IMPORTANTE: Respeite o contexto de posicao informado. Se nao ha posicao, avalie apenas COMPRA ou HOLD. ' +
+    'Se ja ha posicao, avalie apenas VENDA ou HOLD. ' +
     'Seja conservador, prefira HOLD sem sinal claro.';
 var
   Resp: string;
 begin
   Log('Analisando ' + Symbol + '...');
-  Resp := CallLLM(SYS_PROMPT, BuildPrompt(Symbol, Ind, C));
+  Resp := CallLLM(SYS_PROMPT, BuildPrompt(Symbol, Ind, C, HasPosition, BuyPrice));
   if Resp <> '' then begin
     Result := ParseResponse(Resp);
     Log(Format('Sinal: %s | Confianca: %.0f%%', [SignalToStr(Result.Signal), Result.Confidence]));

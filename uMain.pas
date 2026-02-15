@@ -37,7 +37,9 @@ type
     FTopCoins: TCoinRecoveryArray;
     FSelectedSymbol: string;
     FLastAutoTradeSignal: TTradeSignal;  // Evita trades repetidos no mesmo sinal
+    FLastTradeTime: TDictionary<string, TDateTime>;  // Cooldown entre trades por symbol
     FRefreshingWallet: Boolean;
+    FApiKeyValid: Boolean;
     FOpenPositions: TList<TOpenPosition>;
     FLastCandles: TCandleArray;
     FLastIndicators: TTechnicalIndicators;
@@ -66,6 +68,7 @@ type
     procedure DoPageReady;
     procedure DoRefreshWallet;
     procedure CheckLateralPositions;
+    procedure CheckStopLossTakeProfit;
 
     // Updates
     procedure UpdatePrice;
@@ -107,6 +110,29 @@ implementation
 const
   CONFIG_FILE = 'BinanceTrader.ini';
 
+function DbPathForMode(IsTestnet: Boolean): string;
+begin
+  if IsTestnet then
+    Result := ExtractFilePath(Application.ExeName) + 'BinanceBot_testnet.db'
+  else
+    Result := ExtractFilePath(Application.ExeName) + 'BinanceBot_prod.db';
+end;
+
+function HoursToWindowSize(Hours: Integer): string;
+var Days: Integer;
+begin
+  if Hours < 1 then Hours := 24;
+  if Hours > 168 then Hours := 168;
+  if Hours <= 23 then
+    Result := IntToStr(Hours) + 'h'
+  else begin
+    Days := Hours div 24;
+    if Days < 1 then Days := 1;
+    if Days > 7 then Days := 7;
+    Result := IntToStr(Days) + 'd';
+  end;
+end;
+
 { ================================================================
   FORM LIFECYCLE
   ================================================================ }
@@ -121,9 +147,11 @@ begin
   FAnalyzing := False;
   FScanning := False;
   FLastAutoTradeSignal := tsHold;
+  FApiKeyValid := False;
   FSelectedSymbol := '';
   FConfig := TJSONObject.Create;
   FOpenPositions := TList<TOpenPosition>.Create;
+  FLastTradeTime := TDictionary<string, TDateTime>.Create;
 
 
   SetStatus('Localizando HTML...');
@@ -181,16 +209,22 @@ begin
   LoadConfig;
 
   // Banco de dados SQLite
-  FDB := TDatabase.Create(ExtractFilePath(Application.ExeName) + 'BinanceBot.db');
+  FDB := TDatabase.Create(DbPathForMode(GetCfgBool('testnet', True)));
   // Carregar posicoes abertas do banco
   FreeAndNil(FOpenPositions);
   FOpenPositions := FDB.LoadPositions;
 
-  FBinance := TBinanceAPI.Create(
-    GetCfgStr('apiKey', ''),
-    GetCfgStr('secretKey', ''),
-    GetCfgBool('testnet', True)
-  );
+  // Seleciona chaves conforme modo (testnet ou producao)
+  if GetCfgBool('testnet', True) then
+    FBinance := TBinanceAPI.Create(
+      GetCfgStr('apiKeyTest', ''),
+      GetCfgStr('secretKeyTest', ''),
+      True)
+  else
+    FBinance := TBinanceAPI.Create(
+      GetCfgStr('apiKeyProd', ''),
+      GetCfgStr('secretKeyProd', ''),
+      False);
   FBinance.OnLog := procedure(AMsg: string)
     begin
       TThread.Queue(nil, procedure begin AddLog('Binance', AMsg); end);
@@ -216,6 +250,7 @@ begin
   FreeAndNil(FAIEngine);
   FreeAndNil(FConfig);
   FreeAndNil(FOpenPositions);
+  FreeAndNil(FLastTradeTime);
   FreeAndNil(FDB);
 end;
 
@@ -416,8 +451,10 @@ begin
 
   // Envia config
   LCfg := TJSONObject.Create;
-  LCfg.AddPair('apiKey',       GetCfgStr('apiKey', ''));
-  LCfg.AddPair('secretKey',    GetCfgStr('secretKey', ''));
+  LCfg.AddPair('apiKeyTest',    GetCfgStr('apiKeyTest', ''));
+  LCfg.AddPair('secretKeyTest', GetCfgStr('secretKeyTest', ''));
+  LCfg.AddPair('apiKeyProd',    GetCfgStr('apiKeyProd', ''));
+  LCfg.AddPair('secretKeyProd', GetCfgStr('secretKeyProd', ''));
   LCfg.AddPair('testnet',      TJSONBool.Create(GetCfgBool('testnet', True)));
   LCfg.AddPair('aiKey',        GetCfgStr('aiKey', ''));
   LCfg.AddPair('aiModel',      GetCfgStr('aiModel', 'gpt-4o-mini'));
@@ -429,8 +466,11 @@ begin
   LCfg.AddPair('botInterval',  GetCfgStr('botInterval', '300'));
   LCfg.AddPair('autoTrade',    TJSONBool.Create(GetCfgBool('autoTrade', False)));
   LCfg.AddPair('interval',     GetCfgStr('interval', '1h'));
-  LCfg.AddPair('topCoins',     GetCfgStr('topCoins', '30'));
+  LCfg.AddPair('topCoins',       GetCfgStr('topCoins', '30'));
+  LCfg.AddPair('scanMode',      GetCfgStr('scanMode', 'recovery'));
+  LCfg.AddPair('recoveryHours', GetCfgStr('recoveryHours', '24'));
   LCfg.AddPair('lateralTimeout', GetCfgStr('lateralTimeout', '24'));
+  LCfg.AddPair('tradeCooldown', GetCfgStr('tradeCooldown', '30'));
   LCfg.AddPair('snapshotInterval', GetCfgStr('snapshotInterval', '30'));
   SendToJS('loadConfig', LCfg);
 
@@ -502,10 +542,16 @@ begin
   D := TJSONObject.Create;
   D.AddPair('message', 'Escaneando mercado...');
   SendToJS('scanProgress', D);
-  AddLog('Scanner', 'Iniciando scan do mercado...');
+  var LScanMode := GetCfgStr('scanMode', 'recovery');
+  if LScanMode = 'volume' then
+    AddLog('Scanner', 'Iniciando scan do mercado (modo: Volume)...')
+  else
+    AddLog('Scanner', Format('Iniciando scan do mercado (modo: Recuperacao, janela: %dh)...', [Trunc(GetCfgDbl('recoveryHours', 24))]));
 
   var LTopCount := Trunc(GetCfgDbl('topCoins', 30));
   if LTopCount < 1 then LTopCount := 30;
+  var LRecoveryHours := Trunc(GetCfgDbl('recoveryHours', 24));
+  var LWindowSize := HoursToWindowSize(LRecoveryHours);
 
   TThread.CreateAnonymousThread(procedure
   var
@@ -518,7 +564,12 @@ begin
     LChange, LVol: Double;
   begin
     try
-      LTickers := FBinance.GetAll24hTickers;
+      // Modo volume usa sempre ticker 24h (nao precisa de janela custom)
+      if LScanMode = 'volume' then
+        LTickers := FBinance.GetAll24hTickers
+      else
+        LTickers := FBinance.GetAllTickersWindow(LWindowSize);
+
       if LTickers = nil then
       begin
         TThread.Queue(nil, procedure
@@ -546,7 +597,9 @@ begin
             if LVol < 1000000 then Continue; // Min 1M USDT volume
 
             LChange := StrToFloatDef(LObj.GetValue<string>('priceChangePercent', '0'), 0, FmtDot);
-            if LChange <= 0 then Continue; // Apenas moedas em recuperacao
+
+            // Modo recuperacao: apenas moedas com variacao positiva
+            if (LScanMode <> 'volume') and (LChange <= 0) then Continue;
 
             LCoin.Symbol := LSymbol;
             LCoin.Price := StrToFloatDef(LObj.GetValue<string>('lastPrice', '0'), 0, FmtDot);
@@ -558,15 +611,30 @@ begin
             LList.Add(LCoin);
           end;
 
-          // Ordena por variacao % decrescente
-          LList.Sort(TComparer<TCoinRecovery>.Construct(
-            function(const A, B: TCoinRecovery): Integer
-            begin
-              if A.PriceChangePercent > B.PriceChangePercent then Result := -1
-              else if A.PriceChangePercent < B.PriceChangePercent then Result := 1
-              else Result := 0;
-            end
-          ));
+          if LScanMode = 'volume' then
+          begin
+            // Modo volume: ordena por volume USDT decrescente
+            LList.Sort(TComparer<TCoinRecovery>.Construct(
+              function(const A, B: TCoinRecovery): Integer
+              begin
+                if A.QuoteVolume > B.QuoteVolume then Result := -1
+                else if A.QuoteVolume < B.QuoteVolume then Result := 1
+                else Result := 0;
+              end
+            ));
+          end
+          else
+          begin
+            // Modo recuperacao: ordena por variacao % decrescente
+            LList.Sort(TComparer<TCoinRecovery>.Construct(
+              function(const A, B: TCoinRecovery): Integer
+              begin
+                if A.PriceChangePercent > B.PriceChangePercent then Result := -1
+                else if A.PriceChangePercent < B.PriceChangePercent then Result := 1
+                else Result := 0;
+              end
+            ));
+          end;
 
           // Pega top N
           if LList.Count > LTopCount then
@@ -581,9 +649,11 @@ begin
       end;
 
       TThread.Queue(nil, procedure
+      var LModeLabel: string;
       begin
         SendTopCoins;
-        AddLog('Scanner', Format('Scan completo! %d moedas em recuperacao encontradas', [Length(FTopCoins)]));
+        if LScanMode = 'volume' then LModeLabel := 'por volume' else LModeLabel := 'em recuperacao';
+        AddLog('Scanner', Format('Scan completo! %d moedas %s encontradas', [Length(FTopCoins), LModeLabel]));
         FScanning := False;
         var DEnd := TJSONObject.Create;
         DEnd.AddPair('message', '');
@@ -769,9 +839,20 @@ begin
         AddLog('Bot', 'Indicadores calculados para ' + LSymbol);
       end);
 
+      // Verifica posicao aberta para contexto da IA
+      var LHasPos: Boolean := False;
+      var LBuyPrice: Double := 0;
+      for var PIdx := 0 to FOpenPositions.Count - 1 do
+        if FOpenPositions[PIdx].Symbol = LSymbol then
+        begin
+          LHasPos := True;
+          LBuyPrice := FOpenPositions[PIdx].BuyPrice;
+          Break;
+        end;
+
       // IA ou score tecnico
       if GetCfgStr('aiKey', '') <> '' then
-        LAnalysis := FAIEngine.AnalyzeMarket(LSymbol, LIndicators, LCandles)
+        LAnalysis := FAIEngine.AnalyzeMarket(LSymbol, LIndicators, LCandles, LHasPos, LBuyPrice)
       else
       begin
         var LBreakdown: string;
@@ -798,40 +879,61 @@ begin
           [LSymbol, SignalToStr(LAnalysis.Signal), LAnalysis.Confidence]));
         AddLog('Bot', 'Motivo: ' + LAnalysis.Reasoning);
 
-        // Auto-trade (com protecao contra trades repetidos)
+        // Auto-trade (verifica posicoes reais, cooldown e confianca)
         if GetCfgBool('autoTrade', False) and FBotRunning then
         begin
           if LAnalysis.Confidence >= GetCfgDbl('minConfidence', 70) then
           begin
-            // Verifica se o sinal mudou em relacao ao ultimo trade
-            if (LAnalysis.Signal in [tsStrongBuy, tsBuy]) and
-               (FLastAutoTradeSignal in [tsStrongBuy, tsBuy]) then
+            // Verifica cooldown entre trades no mesmo symbol
+            var LCooldownMin: Double := GetCfgDbl('tradeCooldown', 30);
+            var LLastTime: TDateTime;
+            var LInCooldown: Boolean := False;
+            if FLastTradeTime.TryGetValue(LSymbol, LLastTime) then
             begin
-              AddLog('Bot', LSymbol + ': Ja comprado, aguardando sinal de venda');
-            end
-            else if (LAnalysis.Signal in [tsStrongSell, tsSell]) and
-                    (FLastAutoTradeSignal in [tsStrongSell, tsSell]) then
+              var LElapsedMin: Double := MinutesBetween(Now, LLastTime) + (SecondsBetween(Now, LLastTime) mod 60) / 60.0;
+              if LElapsedMin < LCooldownMin then
+              begin
+                LInCooldown := True;
+                AddLog('Bot', Format('%s: Cooldown ativo (%.0fmin restantes)',
+                  [LSymbol, LCooldownMin - LElapsedMin]));
+              end;
+            end;
+
+            if not LInCooldown then
             begin
-              AddLog('Bot', LSymbol + ': Ja vendido, aguardando sinal de compra');
-            end
-            else
-            begin
-              LAmt := GetCfgDbl('tradeAmount', 100);
-              case LAnalysis.Signal of
-                tsStrongBuy, tsBuy:
-                begin
-                  AddLog('Trade', Format('AUTO-COMPRA %s | Motivo: %s', [LSymbol, LAnalysis.Reasoning]));
-                  DoBuy(LAmt);
-                  FLastAutoTradeSignal := LAnalysis.Signal;
-                end;
-                tsStrongSell, tsSell:
-                begin
-                  AddLog('Trade', Format('AUTO-VENDA %s | Motivo: %s', [LSymbol, LAnalysis.Reasoning]));
-                  DoSell(LAmt);
-                  FLastAutoTradeSignal := LAnalysis.Signal;
-                end;
+              // Verifica se ja tem posicao aberta REAL para este symbol
+              var LHasPosition: Boolean := False;
+              for var PI := 0 to FOpenPositions.Count - 1 do
+                if FOpenPositions[PI].Symbol = LSymbol then
+                begin LHasPosition := True; Break; end;
+
+              if (LAnalysis.Signal in [tsStrongBuy, tsBuy]) and LHasPosition then
+              begin
+                AddLog('Bot', LSymbol + ': Ja possui posicao aberta, aguardando sinal de venda');
+              end
+              else if (LAnalysis.Signal in [tsStrongSell, tsSell]) and not LHasPosition then
+              begin
+                AddLog('Bot', LSymbol + ': Sem posicao aberta para vender');
+              end
               else
-                AddLog('Bot', LSymbol + ': HOLD - sem sinal claro');
+              begin
+                LAmt := GetCfgDbl('tradeAmount', 100);
+                case LAnalysis.Signal of
+                  tsStrongBuy, tsBuy:
+                  begin
+                    AddLog('Trade', Format('AUTO-COMPRA %s | Motivo: %s', [LSymbol, LAnalysis.Reasoning]));
+                    DoBuy(LAmt);
+                    FLastTradeTime.AddOrSetValue(LSymbol, Now);
+                  end;
+                  tsStrongSell, tsSell:
+                  begin
+                    AddLog('Trade', Format('AUTO-VENDA %s | Motivo: %s', [LSymbol, LAnalysis.Reasoning]));
+                    DoSell(LAmt);
+                    FLastTradeTime.AddOrSetValue(LSymbol, Now);
+                  end;
+                else
+                  AddLog('Bot', LSymbol + ': HOLD - sem sinal claro');
+                end;
               end;
             end;
           end
@@ -872,48 +974,65 @@ begin
   AddLog('Trade', Format('Compra solicitada: %.2f USDT', [Amount], FmtDot));
   LSymbol := FSelectedSymbol;
   if LSymbol = '' then begin AddLog('Erro', 'Selecione uma moeda primeiro'); Exit; end;
+  if not FApiKeyValid then begin AddLog('Erro', 'API Key nao validada! Clique em "Testar Conexao" primeiro.'); Exit; end;
   if Amount <= 0 then begin AddLog('Erro', Format('Quantidade invalida: %.4f', [Amount], FmtDot)); Exit; end;
   if FLastIndicators.CurrentPrice <= 0 then begin AddLog('Erro', 'Preco atual nao disponivel, aguarde carregamento'); Exit; end;
 
   LQty := Amount / FLastIndicators.CurrentPrice;
-  AddLog('Trade', Format('COMPRA %s: %.8f @ $%.4f', [LSymbol, LQty, FLastIndicators.CurrentPrice]));
+  AddLog('Trade', Format('Enviando COMPRA %s: %.8f @ $%.4f ...', [LSymbol, LQty, FLastIndicators.CurrentPrice]));
 
   TThread.CreateAnonymousThread(procedure
   var LRes: TOrderResult;
   begin
-    LRes := FBinance.PlaceOrder(LSymbol, osBuy, otMarket, LQty);
-    TThread.Queue(nil, procedure
-    var DT: TJSONObject;
-    begin
-      if LRes.Success then begin
-        AddLog('Trade', 'OK! OrderID=' + IntToStr(LRes.OrderId));
-        DT := TJSONObject.Create;
-        DT.AddPair('timestamp', FormatDateTime('dd/mm/yyyy hh:nn:ss', Now));
-        DT.AddPair('symbol', LSymbol);
-        DT.AddPair('side', 'BUY');
-        DT.AddPair('price', TJSONNumber.Create(FLastIndicators.CurrentPrice));
-        DT.AddPair('quantity', TJSONNumber.Create(LQty));
-        DT.AddPair('signal', SignalToStrEN(FLastAnalysis.Signal));
-        DT.AddPair('confidence', TJSONNumber.Create(FLastAnalysis.Confidence));
-        DT.AddPair('orderId', TJSONNumber.Create(LRes.OrderId));
-        SendToJS('addTrade', DT);
-        // Rastrear posicao aberta
-        var LPos: TOpenPosition;
-        LPos.Symbol := LSymbol;
-        LPos.BuyPrice := FLastIndicators.CurrentPrice;
-        LPos.BuyTime := Now;
-        LPos.Quantity := LQty;
-        FOpenPositions.Add(LPos);
-        // Persistir no banco
-        FDB.SaveTrade(LSymbol, 'BUY', FLastIndicators.CurrentPrice, LQty,
-          SignalToStrEN(FLastAnalysis.Signal), FLastAnalysis.Confidence, LRes.OrderId, Now);
-        FDB.SavePosition(LSymbol, FLastIndicators.CurrentPrice, Now, LQty);
-        AddLog('Posicao', Format('Aberta: %s | Preco: $%.4f | Qtd: %.8f',
-          [LSymbol, LPos.BuyPrice, LPos.Quantity], FmtDot));
-        UpdateBalance;
-      end else
-        AddLog('Erro', LRes.ErrorMsg);
-    end);
+    try
+      LRes := FBinance.PlaceOrder(LSymbol, osBuy, otMarket, LQty);
+      TThread.Queue(nil, procedure
+      var DT: TJSONObject;
+      begin
+        if LRes.Success then begin
+          AddLog('Trade', 'OK! OrderID=' + IntToStr(LRes.OrderId));
+          DT := TJSONObject.Create;
+          DT.AddPair('timestamp', FormatDateTime('dd/mm/yyyy hh:nn:ss', Now));
+          DT.AddPair('symbol', LSymbol);
+          DT.AddPair('side', 'BUY');
+          DT.AddPair('price', TJSONNumber.Create(FLastIndicators.CurrentPrice));
+          DT.AddPair('quantity', TJSONNumber.Create(LQty));
+          DT.AddPair('signal', SignalToStrEN(FLastAnalysis.Signal));
+          DT.AddPair('confidence', TJSONNumber.Create(FLastAnalysis.Confidence));
+          DT.AddPair('orderId', TJSONNumber.Create(LRes.OrderId));
+          SendToJS('addTrade', DT);
+          // Rastrear posicao aberta
+          var LPos: TOpenPosition;
+          LPos.Symbol := LSymbol;
+          LPos.BuyPrice := FLastIndicators.CurrentPrice;
+          LPos.BuyTime := Now;
+          LPos.Quantity := LQty;
+          FOpenPositions.Add(LPos);
+          // Persistir no banco
+          FDB.SaveTrade(LSymbol, 'BUY', FLastIndicators.CurrentPrice, LQty,
+            SignalToStrEN(FLastAnalysis.Signal), FLastAnalysis.Confidence, LRes.OrderId, Now);
+          FDB.SavePosition(LSymbol, FLastIndicators.CurrentPrice, Now, LQty);
+          AddLog('Posicao', Format('Aberta: %s | Preco: $%.4f | Qtd: %.8f',
+            [LSymbol, LPos.BuyPrice, LPos.Quantity], FmtDot));
+          UpdateBalance;
+        end else
+        begin
+          AddLog('Erro', 'COMPRA falhou: ' + LRes.ErrorMsg);
+          var DE := TJSONObject.Create;
+          DE.AddPair('message', 'COMPRA ' + LSymbol + ' falhou: ' + LRes.ErrorMsg);
+          SendToJS('tradeError', DE);
+        end;
+      end);
+    except
+      on E: Exception do
+        TThread.Queue(nil, procedure
+        begin
+          AddLog('Erro', 'Excecao na COMPRA ' + LSymbol + ': ' + E.Message);
+          var DE := TJSONObject.Create;
+          DE.AddPair('message', 'Erro COMPRA ' + LSymbol + ': ' + E.Message);
+          SendToJS('tradeError', DE);
+        end);
+    end;
   end).Start;
 end;
 
@@ -925,46 +1044,63 @@ begin
   AddLog('Trade', Format('Venda solicitada: %.2f USDT', [Amount], FmtDot));
   LSymbol := FSelectedSymbol;
   if LSymbol = '' then begin AddLog('Erro', 'Selecione uma moeda primeiro'); Exit; end;
+  if not FApiKeyValid then begin AddLog('Erro', 'API Key nao validada! Clique em "Testar Conexao" primeiro.'); Exit; end;
   if Amount <= 0 then begin AddLog('Erro', Format('Quantidade invalida: %.4f', [Amount], FmtDot)); Exit; end;
   if FLastIndicators.CurrentPrice <= 0 then begin AddLog('Erro', 'Preco atual nao disponivel, aguarde carregamento'); Exit; end;
 
   LQty := Amount / FLastIndicators.CurrentPrice;
-  AddLog('Trade', Format('VENDA %s: %.8f @ $%.4f', [LSymbol, LQty, FLastIndicators.CurrentPrice]));
+  AddLog('Trade', Format('Enviando VENDA %s: %.8f @ $%.4f ...', [LSymbol, LQty, FLastIndicators.CurrentPrice]));
 
   TThread.CreateAnonymousThread(procedure
   var LRes: TOrderResult;
   begin
-    LRes := FBinance.PlaceOrder(LSymbol, osSell, otMarket, LQty);
-    TThread.Queue(nil, procedure
-    var DT: TJSONObject;
-    begin
-      if LRes.Success then begin
-        AddLog('Trade', 'OK! OrderID=' + IntToStr(LRes.OrderId));
-        DT := TJSONObject.Create;
-        DT.AddPair('timestamp', FormatDateTime('dd/mm/yyyy hh:nn:ss', Now));
-        DT.AddPair('symbol', LSymbol);
-        DT.AddPair('side', 'SELL');
-        DT.AddPair('price', TJSONNumber.Create(FLastIndicators.CurrentPrice));
-        DT.AddPair('quantity', TJSONNumber.Create(LQty));
-        DT.AddPair('signal', SignalToStrEN(FLastAnalysis.Signal));
-        DT.AddPair('confidence', TJSONNumber.Create(FLastAnalysis.Confidence));
-        DT.AddPair('orderId', TJSONNumber.Create(LRes.OrderId));
-        SendToJS('addTrade', DT);
-        // Persistir no banco
-        FDB.SaveTrade(LSymbol, 'SELL', FLastIndicators.CurrentPrice, LQty,
-          SignalToStrEN(FLastAnalysis.Signal), FLastAnalysis.Confidence, LRes.OrderId, Now);
-        FDB.DeletePosition(LSymbol);
-        // Remover posicao aberta do symbol vendido
-        for var PI := FOpenPositions.Count - 1 downto 0 do
-          if FOpenPositions[PI].Symbol = LSymbol then
-          begin
-            FOpenPositions.Delete(PI);
-            Break;
-          end;
-        UpdateBalance;
-      end else
-        AddLog('Erro', LRes.ErrorMsg);
-    end);
+    try
+      LRes := FBinance.PlaceOrder(LSymbol, osSell, otMarket, LQty);
+      TThread.Queue(nil, procedure
+      var DT: TJSONObject;
+      begin
+        if LRes.Success then begin
+          AddLog('Trade', 'OK! OrderID=' + IntToStr(LRes.OrderId));
+          DT := TJSONObject.Create;
+          DT.AddPair('timestamp', FormatDateTime('dd/mm/yyyy hh:nn:ss', Now));
+          DT.AddPair('symbol', LSymbol);
+          DT.AddPair('side', 'SELL');
+          DT.AddPair('price', TJSONNumber.Create(FLastIndicators.CurrentPrice));
+          DT.AddPair('quantity', TJSONNumber.Create(LQty));
+          DT.AddPair('signal', SignalToStrEN(FLastAnalysis.Signal));
+          DT.AddPair('confidence', TJSONNumber.Create(FLastAnalysis.Confidence));
+          DT.AddPair('orderId', TJSONNumber.Create(LRes.OrderId));
+          SendToJS('addTrade', DT);
+          // Persistir no banco
+          FDB.SaveTrade(LSymbol, 'SELL', FLastIndicators.CurrentPrice, LQty,
+            SignalToStrEN(FLastAnalysis.Signal), FLastAnalysis.Confidence, LRes.OrderId, Now);
+          FDB.DeletePosition(LSymbol);
+          // Remover posicao aberta do symbol vendido
+          for var PI := FOpenPositions.Count - 1 downto 0 do
+            if FOpenPositions[PI].Symbol = LSymbol then
+            begin
+              FOpenPositions.Delete(PI);
+              Break;
+            end;
+          UpdateBalance;
+        end else
+        begin
+          AddLog('Erro', 'VENDA falhou: ' + LRes.ErrorMsg);
+          var DE := TJSONObject.Create;
+          DE.AddPair('message', 'VENDA ' + LSymbol + ' falhou: ' + LRes.ErrorMsg);
+          SendToJS('tradeError', DE);
+        end;
+      end);
+    except
+      on E: Exception do
+        TThread.Queue(nil, procedure
+        begin
+          AddLog('Erro', 'Excecao na VENDA ' + LSymbol + ': ' + E.Message);
+          var DE := TJSONObject.Create;
+          DE.AddPair('message', 'Erro VENDA ' + LSymbol + ': ' + E.Message);
+          SendToJS('tradeError', DE);
+        end);
+    end;
   end).Start;
 end;
 
@@ -1014,21 +1150,85 @@ end;
 procedure TfrmMain.DoTestConnection;
 begin
   AddLog('Binance', 'Testando conexao...');
+  // Log diagnostico: mostra modo, URL e chave
+  if FBinance.UseTestnet then
+    AddLog('Binance', 'Modo: TESTNET | URL base: https://testnet.binance.vision/api')
+  else
+    AddLog('Binance', 'Modo: PRODUCAO | URL base: https://api.binance.com/api');
+  if Length(FBinance.ApiKey) > 8 then
+    AddLog('Binance', Format('API Key: %s...%s (%d chars)',
+      [Copy(FBinance.ApiKey, 1, 4), Copy(FBinance.ApiKey, Length(FBinance.ApiKey)-3, 4), Length(FBinance.ApiKey)]))
+  else if FBinance.ApiKey = '' then
+    AddLog('Erro', 'API Key esta VAZIA! Configure em Configuracoes.')
+  else
+    AddLog('Erro', Format('API Key muito curta: %d chars', [Length(FBinance.ApiKey)]));
+
   TThread.CreateAnonymousThread(procedure
-  var LOK: Boolean;
+  var
+    LPingOK, LAuthOK: Boolean;
+    LAccResp: TJSONValue;
+    LAuthErr: string;
   begin
-    FBinance.SyncServerTime;
-    LOK := FBinance.TestConnectivity;
-    TThread.Queue(nil, procedure
-    var DC: TJSONObject;
-    begin
-      DC := TJSONObject.Create;
-      DC.AddPair('connected', TJSONBool.Create(LOK));
-      DC.AddPair('testnet', TJSONBool.Create(GetCfgBool('testnet', True)));
-      SendToJS('connectionStatus', DC);
-      if LOK then begin AddLog('Binance', 'Conexao OK! Tempo sincronizado.'); UpdateBalance; end
-      else AddLog('Erro', 'Falha na conexao');
-    end);
+    try
+      // 1. Sync e Ping (rede)
+      FBinance.SyncServerTime;
+      LPingOK := FBinance.TestConnectivity;
+
+      // 2. Teste autenticado (API key)
+      LAuthOK := False;
+      LAuthErr := '';
+      if LPingOK then
+      begin
+        LAccResp := FBinance.DoRequest('GET', '/v3/account', '', True);
+        try
+          if (LAccResp <> nil) and (LAccResp is TJSONObject) then
+          begin
+            if TJSONObject(LAccResp).FindValue('balances') <> nil then
+              LAuthOK := True
+            else
+              LAuthErr := TJSONObject(LAccResp).GetValue<string>('msg', 'Resposta inesperada');
+          end
+          else
+            LAuthErr := 'Sem resposta do servidor';
+        finally
+          LAccResp.Free;
+        end;
+      end;
+
+      TThread.Queue(nil, procedure
+      var DC: TJSONObject;
+      begin
+        DC := TJSONObject.Create;
+        DC.AddPair('connected', TJSONBool.Create(LPingOK and LAuthOK));
+        DC.AddPair('testnet', TJSONBool.Create(GetCfgBool('testnet', True)));
+        DC.AddPair('authOK', TJSONBool.Create(LAuthOK));
+        SendToJS('connectionStatus', DC);
+
+        FApiKeyValid := LAuthOK;
+
+        if not LPingOK then
+          AddLog('Erro', 'Falha na conexao de rede com a Binance')
+        else if not LAuthOK then
+          AddLog('Erro', 'API Key INVALIDA: ' + LAuthErr + ' - Verifique suas chaves em Configuracoes')
+        else
+        begin
+          AddLog('Binance', 'Conexao OK! API Key validada com sucesso.');
+          UpdateBalance;
+        end;
+      end);
+    except
+      on E: Exception do
+        TThread.Queue(nil, procedure
+        var DC: TJSONObject;
+        begin
+          DC := TJSONObject.Create;
+          DC.AddPair('connected', TJSONBool.Create(False));
+          DC.AddPair('testnet', TJSONBool.Create(GetCfgBool('testnet', True)));
+          DC.AddPair('authOK', TJSONBool.Create(False));
+          SendToJS('connectionStatus', DC);
+          AddLog('Erro', 'Teste de conexao falhou: ' + E.Message);
+        end);
+    end;
   end).Start;
 end;
 
@@ -1037,15 +1237,67 @@ end;
   ================================================================ }
 
 procedure TfrmMain.DoSaveConfig(Data: TJSONObject);
+var
+  LNewTestnet, LOldTestnet: Boolean;
+  LNewDbPath: string;
+  LTradesArr: TJSONArray;
+  LTradesData, LSnapData: TJSONObject;
+  LSnapshotsArr: TJSONArray;
 begin
   if Data = nil then Exit;
+
+  LOldTestnet := GetCfgBool('testnet', True);
+
   FreeAndNil(FConfig);
   FConfig := Data.Clone as TJSONObject;
 
-  FBinance.ApiKey := GetCfgStr('apiKey', '');
-  FBinance.SecretKey := GetCfgStr('secretKey', '');
-  FBinance.UseTestnet := GetCfgBool('testnet', True);
+  LNewTestnet := GetCfgBool('testnet', True);
+
+  // Seleciona chaves conforme modo
+  if LNewTestnet then
+  begin
+    FBinance.ApiKey := GetCfgStr('apiKeyTest', '');
+    FBinance.SecretKey := GetCfgStr('secretKeyTest', '');
+  end
+  else
+  begin
+    FBinance.ApiKey := GetCfgStr('apiKeyProd', '');
+    FBinance.SecretKey := GetCfgStr('secretKeyProd', '');
+  end;
+  FBinance.UseTestnet := LNewTestnet;
   FBinance.UpdateBaseURL;
+
+  // Se o modo ou chaves mudaram, resetar validacao
+  FApiKeyValid := False;
+
+  // Se o modo mudou, trocar o banco de dados
+  if LOldTestnet <> LNewTestnet then
+  begin
+    FreeAndNil(FDB);
+    LNewDbPath := DbPathForMode(LNewTestnet);
+    FDB := TDatabase.Create(LNewDbPath);
+
+    // Recarregar posicoes abertas do novo banco
+    FreeAndNil(FOpenPositions);
+    FOpenPositions := FDB.LoadPositions;
+
+    // Recarregar trades do novo banco e enviar ao JS
+    LTradesArr := FDB.LoadTrades;
+    LTradesData := TJSONObject.Create;
+    LTradesData.AddPair('trades', LTradesArr);
+    SendToJS('loadTrades', LTradesData);
+
+    // Recarregar snapshots do novo banco e enviar ao JS
+    LSnapshotsArr := FDB.LoadWalletSnapshots(500);
+    LSnapData := TJSONObject.Create;
+    LSnapData.AddPair('snapshots', LSnapshotsArr);
+    SendToJS('walletSnapshots', LSnapData);
+
+    if LNewTestnet then
+      AddLog('Sistema', 'Modo alterado para TESTNET - banco de dados de teste carregado')
+    else
+      AddLog('Sistema', 'Modo alterado para PRODUCAO - banco de dados de producao carregado');
+  end;
 
   FAIEngine.ApiKey := GetCfgStr('aiKey', '');
   FAIEngine.Model := GetCfgStr('aiModel', 'gpt-4o-mini');
@@ -1054,7 +1306,10 @@ begin
   else FAIEngine.BaseURL := 'https://api.openai.com/v1';
 
   SaveConfig;
-  AddLog('Sistema', 'Configuracoes salvas!');
+  AddLog('Sistema', 'Configuracoes salvas! Validando API Key...');
+
+  // Valida automaticamente a API Key ao salvar
+  DoTestConnection;
 end;
 
 { ================================================================
@@ -1075,11 +1330,34 @@ begin
         FLastIndicators.CurrentPrice := LPrice;
         TThread.Queue(nil, procedure
         var DP: TJSONObject;
+            LStopLoss, LChangePercent: Double;
+            PI: Integer;
         begin
           DP := TJSONObject.Create;
           DP.AddPair('price', TJSONNumber.Create(LPrice));
           DP.AddPair('symbol', LSym);
           SendToJS('updatePrice', DP);
+
+          // Verifica stop loss em tempo real para o symbol selecionado (sem API extra)
+          if FBotRunning and (FOpenPositions.Count > 0) then
+          begin
+            LStopLoss := GetCfgDbl('stopLoss', 2);
+            if LStopLoss > 0 then
+              for PI := 0 to FOpenPositions.Count - 1 do
+                if (FOpenPositions[PI].Symbol = LSym) and (FOpenPositions[PI].BuyPrice > 0) then
+                begin
+                  LChangePercent := ((LPrice - FOpenPositions[PI].BuyPrice) / FOpenPositions[PI].BuyPrice) * 100;
+                  if LChangePercent <= -LStopLoss then
+                  begin
+                    AddLog('StopLoss', Format(
+                      'STOP LOSS URGENTE: %s | Queda: %.2f%% | Vendendo imediatamente!',
+                      [LSym, LChangePercent], FmtDot));
+                    DoSell(FOpenPositions[PI].Quantity * LPrice);
+                    FLastTradeTime.AddOrSetValue(LSym, Now);
+                  end;
+                  Break;
+                end;
+          end;
         end);
       end;
     except end;
@@ -1347,8 +1625,10 @@ begin
   try
     FreeAndNil(FConfig);
     FConfig := TJSONObject.Create;
-    FConfig.AddPair('apiKey',        Ini.ReadString('Binance', 'ApiKey', ''));
-    FConfig.AddPair('secretKey',     Ini.ReadString('Binance', 'SecretKey', ''));
+    FConfig.AddPair('apiKeyTest',     Ini.ReadString('Binance', 'ApiKeyTest', ''));
+    FConfig.AddPair('secretKeyTest', Ini.ReadString('Binance', 'SecretKeyTest', ''));
+    FConfig.AddPair('apiKeyProd',    Ini.ReadString('Binance', 'ApiKeyProd', ''));
+    FConfig.AddPair('secretKeyProd', Ini.ReadString('Binance', 'SecretKeyProd', ''));
     FConfig.AddPair('testnet',       TJSONBool.Create(Ini.ReadBool('Binance', 'Testnet', True)));
     FConfig.AddPair('aiKey',         Ini.ReadString('AI', 'ApiKey', ''));
     FConfig.AddPair('aiModel',       Ini.ReadString('AI', 'Model', 'gpt-4o-mini'));
@@ -1360,7 +1640,11 @@ begin
     FConfig.AddPair('minConfidence', Ini.ReadString('Trading', 'MinConfidence', '70'));
     FConfig.AddPair('botInterval',   Ini.ReadString('Trading', 'BotInterval', '300'));
     FConfig.AddPair('autoTrade',     TJSONBool.Create(Ini.ReadBool('Trading', 'AutoTrade', False)));
+    FConfig.AddPair('topCoins',         Ini.ReadString('Trading', 'TopCoins', '30'));
+    FConfig.AddPair('scanMode',       Ini.ReadString('Trading', 'ScanMode', 'recovery'));
+    FConfig.AddPair('recoveryHours',  Ini.ReadString('Trading', 'RecoveryHours', '24'));
     FConfig.AddPair('lateralTimeout', Ini.ReadString('Trading', 'LateralTimeout', '24'));
+    FConfig.AddPair('tradeCooldown', Ini.ReadString('Trading', 'TradeCooldown', '30'));
     FConfig.AddPair('snapshotInterval', Ini.ReadString('Trading', 'SnapshotInterval', '30'));
   finally
     Ini.Free;
@@ -1372,8 +1656,10 @@ var Ini: TIniFile;
 begin
   Ini := TIniFile.Create(ExtractFilePath(Application.ExeName) + CONFIG_FILE);
   try
-    Ini.WriteString('Binance', 'ApiKey',        GetCfgStr('apiKey', ''));
-    Ini.WriteString('Binance', 'SecretKey',     GetCfgStr('secretKey', ''));
+    Ini.WriteString('Binance', 'ApiKeyTest',     GetCfgStr('apiKeyTest', ''));
+    Ini.WriteString('Binance', 'SecretKeyTest', GetCfgStr('secretKeyTest', ''));
+    Ini.WriteString('Binance', 'ApiKeyProd',    GetCfgStr('apiKeyProd', ''));
+    Ini.WriteString('Binance', 'SecretKeyProd', GetCfgStr('secretKeyProd', ''));
     Ini.WriteBool  ('Binance', 'Testnet',       GetCfgBool('testnet', True));
     Ini.WriteString('AI',      'ApiKey',        GetCfgStr('aiKey', ''));
     Ini.WriteString('AI',      'Model',         GetCfgStr('aiModel', 'gpt-4o-mini'));
@@ -1385,7 +1671,11 @@ begin
     Ini.WriteString('Trading', 'MinConfidence', GetCfgStr('minConfidence', '70'));
     Ini.WriteString('Trading', 'BotInterval',   GetCfgStr('botInterval', '300'));
     Ini.WriteBool  ('Trading', 'AutoTrade',     GetCfgBool('autoTrade', False));
+    Ini.WriteString('Trading', 'TopCoins',         GetCfgStr('topCoins', '30'));
+    Ini.WriteString('Trading', 'ScanMode',       GetCfgStr('scanMode', 'recovery'));
+    Ini.WriteString('Trading', 'RecoveryHours',  GetCfgStr('recoveryHours', '24'));
     Ini.WriteString('Trading', 'LateralTimeout', GetCfgStr('lateralTimeout', '24'));
+    Ini.WriteString('Trading', 'TradeCooldown', GetCfgStr('tradeCooldown', '30'));
     Ini.WriteString('Trading', 'SnapshotInterval', GetCfgStr('snapshotInterval', '30'));
   finally
     Ini.Free;
@@ -1419,7 +1709,9 @@ procedure TfrmMain.OnTimerBot(Sender: TObject);
 begin
   if FBotRunning and not FAnalyzing then
   begin
-    // Verifica posicoes lateralizadas antes de tudo
+    // Verifica stop loss e take profit PRIMEIRO (urgente)
+    CheckStopLossTakeProfit;
+    // Verifica posicoes lateralizadas
     CheckLateralPositions;
     // Bot: re-scan e analisa a melhor moeda
     if not FScanning then
@@ -1489,6 +1781,80 @@ begin
         AddLog('Posicao', Format('%s: %.1fh aberta, variacao %.2f%% (nao lateral)',
           [Pos.Symbol, LHours, LPriceChange], FmtDot));
     end;
+  end;
+end;
+
+procedure TfrmMain.CheckStopLossTakeProfit;
+var
+  I: Integer;
+  Pos: TOpenPosition;
+  LCurrentPrice, LChangePercent: Double;
+  LStopLoss, LTakeProfit: Double;
+  LSavedSymbol: string;
+begin
+  if FOpenPositions.Count = 0 then Exit;
+  if not FBotRunning then Exit;
+
+  LStopLoss := GetCfgDbl('stopLoss', 2);
+  LTakeProfit := GetCfgDbl('takeProfit', 4);
+
+  // Se ambos estao zerados, nao verifica
+  if (LStopLoss <= 0) and (LTakeProfit <= 0) then Exit;
+
+  for I := FOpenPositions.Count - 1 downto 0 do
+  begin
+    Pos := FOpenPositions[I];
+    if Pos.BuyPrice <= 0 then Continue;
+
+    try
+      LCurrentPrice := FBinance.GetPrice(Pos.Symbol);
+    except
+      Continue;
+    end;
+    if LCurrentPrice <= 0 then Continue;
+
+    LChangePercent := ((LCurrentPrice - Pos.BuyPrice) / Pos.BuyPrice) * 100;
+
+    // Stop Loss: preco caiu mais que o limite configurado
+    if (LStopLoss > 0) and (LChangePercent <= -LStopLoss) then
+    begin
+      AddLog('StopLoss', Format(
+        'STOP LOSS ACIONADO: %s | Compra: $%s | Atual: $%s | Queda: %.2f%%',
+        [Pos.Symbol,
+         FormatFloat('0.########', Pos.BuyPrice, FmtDot),
+         FormatFloat('0.########', LCurrentPrice, FmtDot),
+         LChangePercent], FmtDot));
+
+      LSavedSymbol := FSelectedSymbol;
+      FSelectedSymbol := Pos.Symbol;
+      FLastIndicators.CurrentPrice := LCurrentPrice;
+      // Vende toda a posicao
+      DoSell(Pos.Quantity * LCurrentPrice);
+      FSelectedSymbol := LSavedSymbol;
+      FLastTradeTime.AddOrSetValue(Pos.Symbol, Now);
+
+      Break; // Processa uma por ciclo
+    end
+    // Take Profit: preco subiu mais que o limite configurado
+    else if (LTakeProfit > 0) and (LChangePercent >= LTakeProfit) then
+    begin
+      AddLog('TakeProfit', Format(
+        'TAKE PROFIT ACIONADO: %s | Compra: $%s | Atual: $%s | Ganho: +%.2f%%',
+        [Pos.Symbol,
+         FormatFloat('0.########', Pos.BuyPrice, FmtDot),
+         FormatFloat('0.########', LCurrentPrice, FmtDot),
+         LChangePercent], FmtDot));
+
+      LSavedSymbol := FSelectedSymbol;
+      FSelectedSymbol := Pos.Symbol;
+      FLastIndicators.CurrentPrice := LCurrentPrice;
+      DoSell(Pos.Quantity * LCurrentPrice);
+      FSelectedSymbol := LSavedSymbol;
+      FLastTradeTime.AddOrSetValue(Pos.Symbol, Now);
+
+      Break; // Processa uma por ciclo
+    end
+    ;
   end;
 end;
 

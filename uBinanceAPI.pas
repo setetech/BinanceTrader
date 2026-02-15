@@ -19,11 +19,13 @@ type
     function GetTimestamp: Int64;
     function GetLocalTimestamp: Int64;
     function SignQuery(const Q: string): string;
-    function DoRequest(const Method, Endpoint: string; const Params: string = ''; Signed: Boolean = False): TJSONValue;
     function DoPublicRequest(const Method, Endpoint: string; const Params: string = ''): TJSONValue;
     procedure Log(const Msg: string);
     function ParseCandle(A: TJSONArray): TCandle;
+    procedure SetApiKey(const Value: string);
+    procedure SetSecretKey(const Value: string);
   public
+    function DoRequest(const Method, Endpoint: string; const Params: string = ''; Signed: Boolean = False): TJSONValue;
     constructor Create(const AApiKey, ASecretKey: string; ATestnet: Boolean = True);
     destructor Destroy; override;
     // Sincroniza relogio com servidor Binance
@@ -33,6 +35,7 @@ type
     function GetKlines(const Symbol, Interval: string; Limit: Integer = 100): TCandleArray;
     function Get24hTicker(const Symbol: string): TJSONObject;
     function GetAll24hTickers: TJSONArray;
+    function GetAllTickersWindow(const WindowSize: string = '1d'): TJSONArray;
     // Account
     function GetBalance(const Asset: string): TAssetBalance;
     function GetAllBalances(MinTotal: Double = 0): TAssetBalanceArray;
@@ -43,8 +46,8 @@ type
       Quantity: Double; Price: Double = 0): TOrderResult;
     // Util
     function TestConnectivity: Boolean;
-    property ApiKey: string read FApiKey write FApiKey;
-    property SecretKey: string read FSecretKey write FSecretKey;
+    property ApiKey: string read FApiKey write SetApiKey;
+    property SecretKey: string read FSecretKey write SetSecretKey;
     property UseTestnet: Boolean read FTestnet write FTestnet;
     property OnLog: TProc<string> read FOnLog write FOnLog;
     procedure UpdateBaseURL;
@@ -59,8 +62,8 @@ implementation
 constructor TBinanceAPI.Create(const AApiKey, ASecretKey: string; ATestnet: Boolean);
 begin
   inherited Create;
-  FApiKey := AApiKey;
-  FSecretKey := ASecretKey;
+  FApiKey := Trim(AApiKey);
+  FSecretKey := Trim(ASecretKey);
   FTestnet := ATestnet;
   FTimeOffset := 0;
   UpdateBaseURL;
@@ -119,6 +122,16 @@ begin
   end;
 end;
 
+procedure TBinanceAPI.SetApiKey(const Value: string);
+begin
+  FApiKey := Trim(Value);
+end;
+
+procedure TBinanceAPI.SetSecretKey(const Value: string);
+begin
+  FSecretKey := Trim(Value);
+end;
+
 function TBinanceAPI.SignQuery(const Q: string): string;
 begin
   Result := THash.DigestAsString(
@@ -142,6 +155,12 @@ begin
     Query := Query + 'timestamp=' + IntToStr(GetTimestamp);
     Query := Query + '&signature=' + SignQuery(Query);
   end;
+  if Signed then
+    Log(Format('Request: %s %s | Key: %s...%s (%d chars) | URL: %s',
+      [Method, Endpoint,
+       Copy(FApiKey, 1, 4), Copy(FApiKey, Length(FApiKey)-3, 4), Length(FApiKey),
+       FBaseURL + Endpoint]));
+
   try
     FHttp.CustomHeaders['X-MBX-APIKEY'] := FApiKey;
     if Method = 'GET' then
@@ -272,26 +291,105 @@ begin
     J.Free;
 end;
 
+function TBinanceAPI.GetAllTickersWindow(const WindowSize: string): TJSONArray;
+var
+  LAll24h, LBatch: TJSONArray;
+  LSymbols: TStringList;
+  I, LStart, LBatchSize: Integer;
+  LObj: TJSONObject;
+  LSym, LSymParam: string;
+  J: TJSONValue;
+begin
+  // Para 1d (24h) usa o endpoint nativo que retorna todos os tickers
+  if (WindowSize = '') or (WindowSize = '1d') then
+  begin
+    Result := GetAll24hTickers;
+    Exit;
+  end;
+
+  // Para outros periodos: /v3/ticker exige 'symbol' ou 'symbols'.
+  // Passo 1: busca todos via /v3/ticker/24hr para descobrir os pares USDT
+  LAll24h := GetAll24hTickers;
+  if LAll24h = nil then begin Result := nil; Exit; end;
+
+  LSymbols := TStringList.Create;
+  Result := TJSONArray.Create;
+  try
+    for I := 0 to LAll24h.Count - 1 do
+    begin
+      LObj := TJSONObject(LAll24h.Items[I]);
+      LSym := LObj.GetValue<string>('symbol', '');
+      if LSym.EndsWith('USDT') and
+         (StrToFloatDef(LObj.GetValue<string>('quoteVolume', '0'), 0, FmtDot) >= 500000) then
+        LSymbols.Add(LSym);
+    end;
+  finally
+    LAll24h.Free;
+  end;
+
+  if LSymbols.Count = 0 then
+  begin
+    LSymbols.Free;
+    Exit;
+  end;
+
+  // Passo 2: consulta /v3/ticker em lotes com windowSize customizado
+  try
+    LBatchSize := 100;
+    LStart := 0;
+    while LStart < LSymbols.Count do
+    begin
+      // Monta JSON array de simbolos: ["BTCUSDT","ETHUSDT",...]
+      LSymParam := '[';
+      for I := LStart to Min(LStart + LBatchSize - 1, LSymbols.Count - 1) do
+      begin
+        if I > LStart then LSymParam := LSymParam + ',';
+        LSymParam := LSymParam + '"' + LSymbols[I] + '"';
+      end;
+      LSymParam := LSymParam + ']';
+
+      J := DoPublicRequest('GET', '/v3/ticker',
+        'symbols=' + TNetEncoding.URL.Encode(LSymParam) + '&windowSize=' + WindowSize);
+      if (J <> nil) and (J is TJSONArray) then
+      begin
+        LBatch := TJSONArray(J);
+        for I := 0 to LBatch.Count - 1 do
+          Result.AddElement(LBatch.Items[I].Clone as TJSONValue);
+        LBatch.Free;
+      end
+      else
+        J.Free;
+
+      Inc(LStart, LBatchSize);
+    end;
+  finally
+    LSymbols.Free;
+  end;
+end;
+
 function TBinanceAPI.GetBalance(const Asset: string): TAssetBalance;
-var Acc: TJSONValue; Bals: TJSONArray; I: Integer; B: TJSONObject;
+var Acc: TJSONValue; BalsVal: TJSONValue; Bals: TJSONArray; I: Integer; B: TJSONObject;
 begin
   Result.Asset := Asset; Result.Free := 0; Result.Locked := 0;
   Acc := DoRequest('GET', '/v3/account', '', True);
   try
     if (Acc <> nil) and (Acc is TJSONObject) then
     begin
-      Bals := TJSONObject(Acc).GetValue<TJSONArray>('balances');
-      if Bals <> nil then
+      BalsVal := TJSONObject(Acc).FindValue('balances');
+      if (BalsVal <> nil) and (BalsVal is TJSONArray) then
+      begin
+        Bals := TJSONArray(BalsVal);
         for I := 0 to Bals.Count - 1 do
         begin
           B := TJSONObject(Bals.Items[I]);
-          if B.GetValue<string>('asset') = Asset then
+          if B.GetValue<string>('asset', '') = Asset then
           begin
             Result.Free := StrToFloatDef(B.GetValue<string>('free', '0'), 0, FmtDot);
             Result.Locked := StrToFloatDef(B.GetValue<string>('locked', '0'), 0, FmtDot);
             Break;
           end;
         end;
+      end;
     end;
   finally
     Acc.Free;
@@ -299,7 +397,7 @@ begin
 end;
 
 function TBinanceAPI.GetAllBalances(MinTotal: Double): TAssetBalanceArray;
-var Acc: TJSONValue; Bals: TJSONArray; I, Count: Integer; B: TJSONObject;
+var Acc: TJSONValue; BalsVal: TJSONValue; Bals: TJSONArray; I, Count: Integer; B: TJSONObject;
     Bal: TAssetBalance; Total: Double;
 begin
   SetLength(Result, 0);
@@ -307,9 +405,10 @@ begin
   try
     if (Acc <> nil) and (Acc is TJSONObject) then
     begin
-      Bals := TJSONObject(Acc).GetValue<TJSONArray>('balances');
-      if Bals <> nil then
+      BalsVal := TJSONObject(Acc).FindValue('balances');
+      if (BalsVal <> nil) and (BalsVal is TJSONArray) then
       begin
+        Bals := TJSONArray(BalsVal);
         Count := 0;
         SetLength(Result, Bals.Count);
         for I := 0 to Bals.Count - 1 do
