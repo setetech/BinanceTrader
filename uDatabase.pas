@@ -20,6 +20,7 @@ type
     procedure SaveTrade(const Symbol, Side: string; Price, Quantity: Double;
       const Signal: string; Confidence: Double; OrderId: Int64; Timestamp: TDateTime);
     function LoadTrades: TJSONArray;
+    function GetTradedSymbols: TArray<string>;
     // Posicoes abertas
     procedure SavePosition(const Symbol: string; BuyPrice: Double;
       BuyTime: TDateTime; Quantity: Double);
@@ -152,6 +153,32 @@ begin
     end;
   finally
     Q.Free;
+  end;
+end;
+
+function TDatabase.GetTradedSymbols: TArray<string>;
+var
+  Q: TUniQuery;
+  List: TList<string>;
+begin
+  List := TList<string>.Create;
+  try
+    Q := TUniQuery.Create(nil);
+    try
+      Q.Connection := FConn;
+      Q.SQL.Text := 'SELECT DISTINCT symbol FROM trades ORDER BY symbol';
+      Q.Open;
+      while not Q.Eof do
+      begin
+        List.Add(Q.FieldByName('symbol').AsString);
+        Q.Next;
+      end;
+    finally
+      Q.Free;
+    end;
+    Result := List.ToArray;
+  finally
+    List.Free;
   end;
 end;
 

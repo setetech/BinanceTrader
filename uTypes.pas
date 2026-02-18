@@ -68,6 +68,7 @@ type
     HighPrice: Double;
     LowPrice: Double;
     QuoteVolume: Double;
+    ScanMetric: Double;  // Valor especifico do filtro (RSI, squeeze, etc.)
   end;
   TCoinRecoveryArray = TArray<TCoinRecovery>;
 

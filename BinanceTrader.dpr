@@ -8,6 +8,7 @@ uses
   uTechnicalAnalysis in 'uTechnicalAnalysis.pas',
   uAIEngine in 'uAIEngine.pas',
   uDatabase in 'uDatabase.pas',
+  uGeneticOptimizer in 'uGeneticOptimizer.pas',
   Vcl.Themes,
   Vcl.Styles;
 

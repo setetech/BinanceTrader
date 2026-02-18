@@ -186,11 +186,52 @@ html, body {
 }
 
 .config-actions {
+  position: sticky;
+  bottom: 0;
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
-  padding-top: 16px;
+  padding: 14px 0;
+  background: linear-gradient(transparent, var(--bg) 30%);
+  z-index: 10;
 }
+
+/* ===== GA OPTIMIZER ===== */
+.stat-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+.ga-progress-bar {
+  background: var(--border);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+.ga-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s;
+}
+.ga-params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 6px;
+  font-size: 12px;
+}
+.ga-params-grid b { color: var(--text-muted); }
 
 /* ===== LOG TAB ===== */
 #log-panel {
@@ -918,6 +959,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     <button class="tab-btn" data-tab="trading">&#x1F4B9; Trading</button>
     <button class="tab-btn" data-tab="config">&#x2699;&#xFE0F; Configuracoes</button>
     <button class="tab-btn" data-tab="log">&#x1F4CB; Log</button>
+    <button class="tab-btn" data-tab="optimizer">&#x1F9EC; Otimizador GA</button>
     <button class="tab-btn" data-tab="help">&#x1F4D6; Manual</button>
     <button class="tab-btn" data-tab="performance">&#x1F4CA; Desempenho</button>
     <button class="tab-btn" data-tab="wallet">&#x1F4B0; Carteira</button>
@@ -1106,6 +1148,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
         <div class="card">
           <div class="card-header">
             <span class="card-title">&#x1F4DC; Historico de Trades</span>
+            <button class="btn btn-outline btn-sm" onclick="sendToDelphi('loadBinanceTrades',{})">&#x1F504; Atualizar da Binance</button>
           </div>
           <div style="max-height:400px;overflow-y:auto;">
             <table class="data-table" id="trades-table">
@@ -1171,6 +1214,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
         <div class="card">
           <div class="card-header">
             <span class="card-title">&#x1F9E0; IA / LLM</span>
+            <span id="ai-vision-badge" style="display:none;font-size:10px;background:var(--accent);color:#000;padding:2px 8px;border-radius:10px;font-weight:700;">VISION</span>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="font-size:11px;color:var(--text-muted);margin-bottom:6px;display:block;">Preset Rapido</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('openai')">OpenAI</button>
+              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('deepseek')">DeepSeek</button>
+              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('lmstudio')">LM Studio (Local)</button>
+              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('ollama')">Ollama (Local)</button>
+            </div>
           </div>
           <div class="input-group">
             <label>API Key IA</label>
@@ -1178,20 +1231,46 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           </div>
           <div class="input-group">
             <label>Modelo</label>
-            <select id="cfg-aiModel">
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-4o-mini">GPT-4o Mini</option>
-              <option value="gpt-4-turbo">GPT-4 Turbo</option>
-              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-              <option value="claude-sonnet-4-20250514">Claude Sonnet</option>
-              <option value="claude-haiku-4-20250506">Claude Haiku</option>
-              <option value="deepseek-chat">DeepSeek Chat</option>
-              <option value="custom">Custom</option>
+            <select id="cfg-aiModel" onchange="onAIModelChange()">
+              <optgroup label="OpenAI">
+                <option value="gpt-4o">GPT-4o (Vision)</option>
+                <option value="gpt-4o-mini">GPT-4o Mini (Vision)</option>
+                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              </optgroup>
+              <optgroup label="Anthropic">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet</option>
+                <option value="claude-haiku-4-20250506">Claude Haiku</option>
+              </optgroup>
+              <optgroup label="DeepSeek">
+                <option value="deepseek-chat">DeepSeek Chat</option>
+              </optgroup>
+              <optgroup label="LM Studio (Local)">
+                <option value="qwen3-vl-8b">Qwen3-VL-8B (Vision)</option>
+                <option value="qwen3-8b">Qwen3-8B</option>
+                <option value="qwen2.5-7b-instruct">Qwen2.5-7B</option>
+                <option value="gemma-3n-e4b-it-text">Gemma 3N 4B (Rapido)</option>
+                <option value="gemma-3-12b-it">Gemma 3 12B</option>
+              </optgroup>
+              <optgroup label="Outro">
+                <option value="custom">Custom</option>
+              </optgroup>
             </select>
+          </div>
+          <div class="input-group" id="ai-custom-model-group" style="display:none;">
+            <label>Nome do Modelo (Custom)</label>
+            <input type="text" id="cfg-aiModelCustom" placeholder="nome-do-modelo" oninput="onAIModelChange()">
           </div>
           <div class="input-group">
             <label>Base URL</label>
             <input type="text" id="cfg-aiBaseURL" placeholder="https://api.openai.com/v1">
+          </div>
+          <div id="ai-vision-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(0,200,150,0.1);border:1px solid rgba(0,200,150,0.3);border-radius:6px;font-size:11px;color:var(--text-muted);">
+            &#x1F441; <strong>Modelo com Visao:</strong> Um grafico de candles (800x450) sera gerado automaticamente e enviado junto com os indicadores para analise visual de padroes (tendencias, suportes, resistencias, doji, martelo, etc).
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-outline" id="btn-test-ai" onclick="doTestAI()">Testar Conexao IA</button>
+            <span id="ai-test-result" style="font-size:12px;"></span>
           </div>
         </div>
 
@@ -1216,6 +1295,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <input type="number" id="cfg-minConfidence" placeholder="70" step="1" min="0" max="100">
           </div>
           <div class="input-group">
+            <label>Score Minimo (pre-filtro IA)</label>
+            <input type="number" id="cfg-minScore" placeholder="25" step="5" min="0" max="80">
+          </div>
+          <div class="input-group">
             <label>Intervalo do Bot (segundos)</label>
             <input type="number" id="cfg-botInterval" placeholder="60" step="1" min="5">
           </div>
@@ -1224,6 +1307,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <select id="cfg-scanMode" onchange="updateScanModeUI()">
               <option value="recovery">Recuperacao (moedas em alta)</option>
               <option value="volume">Volume (mais negociadas)</option>
+              <option value="rsi">RSI Extremos (sobrevendido/sobrecomprado)</option>
+              <option value="breakout">Breakout (squeeze Bollinger)</option>
+              <option value="macd">MACD Crossover (cruzamento fresco)</option>
+              <option value="momentum">Momentum (tendencia forte)</option>
+              <option value="flashdip">Flash Dip (queda subita 1h)</option>
+              <option value="aiselect">AI Select (Binance)</option>
             </select>
           </div>
           <div class="input-group" id="group-recoveryHours">
@@ -1275,11 +1364,141 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
     <!-- ==================== LOG TAB ==================== -->
     <div id="log-panel" class="tab-panel" data-tab-panel="log">
+      <div id="ai-stats-bar" style="display:none; margin-bottom:12px; padding:10px 14px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <span style="font-size:13px; font-weight:600; color:var(--text-primary);">AI Stats</span>
+          <span style="font-size:11px; color:var(--text-muted);">(ref. GPT-4o-mini)</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px;">
+          <div class="stat-box" style="padding:8px;">
+            <div class="stat-label">Chamadas</div>
+            <div class="stat-value" id="ai-st-calls" style="font-size:16px; color:var(--primary);">0</div>
+          </div>
+          <div class="stat-box" style="padding:8px;">
+            <div class="stat-label">Tempo Medio</div>
+            <div class="stat-value" id="ai-st-avg" style="font-size:16px; color:var(--warning);">0s</div>
+          </div>
+          <div class="stat-box" style="padding:8px;">
+            <div class="stat-label">Tokens In</div>
+            <div class="stat-value" id="ai-st-tkin" style="font-size:16px; color:var(--text-primary);">0</div>
+          </div>
+          <div class="stat-box" style="padding:8px;">
+            <div class="stat-label">Tokens Out</div>
+            <div class="stat-value" id="ai-st-tkout" style="font-size:16px; color:var(--text-primary);">0</div>
+          </div>
+          <div class="stat-box" style="padding:8px;">
+            <div class="stat-label">Custo/Analise</div>
+            <div class="stat-value" id="ai-st-cavg" style="font-size:16px; color:var(--success);">$0</div>
+          </div>
+          <div class="stat-box" style="padding:8px;">
+            <div class="stat-label">Custo Total</div>
+            <div class="stat-value" id="ai-st-ctotal" style="font-size:16px; color:var(--danger);">$0</div>
+          </div>
+        </div>
+      </div>
       <div class="card-header" style="margin-bottom:10px;">
         <span class="card-title">&#x1F4CB; Registro de Atividades</span>
         <button class="btn btn-outline btn-sm" onclick="clearLogs()">&#x1F5D1; Limpar</button>
       </div>
       <div id="log-container"></div>
+    </div>
+
+    <!-- ==================== OPTIMIZER GA TAB ==================== -->
+    <div id="optimizer-panel" class="tab-panel" data-tab-panel="optimizer">
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-header">
+          <span class="card-title">&#x1F9EC; Otimizador Genetico (GA)</span>
+          <span id="ga-status" style="font-size:12px;color:var(--text-muted);">Pronto</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+          Otimiza os parametros de trading usando algoritmo genetico sobre dados historicos.
+          Faca um <strong>Scan</strong> primeiro para definir as moedas de teste.
+          <br>Populacao: 100 individuos | 50 geracoes | Top 15 moedas do scanner | 500 candles cada
+        </p>
+
+        <div id="ga-progress-area" style="display:none;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+            <span id="ga-progress-msg">Iniciando...</span>
+            <span id="ga-progress-pct">0%</span>
+          </div>
+          <div class="ga-progress-bar">
+            <div class="ga-progress-fill" id="ga-progress-fill"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-accent" id="btn-start-ga" onclick="doStartOptimize()">
+            &#x25B6; Iniciar Otimizacao
+          </button>
+          <button class="btn btn-outline" id="btn-cancel-ga" style="display:none;" onclick="doCancelOptimize()">
+            &#x23F9; Cancelar
+          </button>
+        </div>
+      </div>
+
+      <div class="card" id="ga-results-card" style="display:none;">
+        <div class="card-header" style="margin-bottom:12px;">
+          <span class="card-title">&#x1F3C6; Resultados do Backtest</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;">
+          <div class="stat-box">
+            <div class="stat-label">Lucro Liquido</div>
+            <div class="stat-value" id="ga-net-profit">--</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Total Trades</div>
+            <div class="stat-value" id="ga-num-trades">--</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Max Drawdown</div>
+            <div class="stat-value" id="ga-max-dd" style="color:var(--red);">--</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Win Rate</div>
+            <div class="stat-value" id="ga-win-rate">--</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Fitness</div>
+            <div class="stat-value" id="ga-fitness">--</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Moedas</div>
+            <div class="stat-value" id="ga-symbols-used">--</div>
+          </div>
+        </div>
+
+        <div class="card-header" style="margin-bottom:8px;">
+          <span class="card-title" style="font-size:13px;">Parametros Otimizados</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:700;color:var(--accent);grid-column:1/-1;margin-bottom:4px;">Trading</div>
+          <div class="ga-params-grid" style="grid-column:1/-1;">
+            <div><b>Stop Loss:</b> <span id="ga-param-sl">--</span>%</div>
+            <div><b>Take Profit:</b> <span id="ga-param-tp">--</span>%</div>
+            <div><b>Min Score:</b> <span id="ga-param-ms">--</span></div>
+            <div><b>RSI Oversold:</b> <span id="ga-param-rsi-os">--</span></div>
+            <div><b>RSI Overbought:</b> <span id="ga-param-rsi-ob">--</span></div>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--accent);grid-column:1/-1;margin:8px 0 4px;">Pesos dos Indicadores</div>
+          <div class="ga-params-grid" style="grid-column:1/-1;">
+            <div><b>RSI:</b> <span id="ga-param-wrsi">--</span></div>
+            <div><b>MACD Hist:</b> <span id="ga-param-wmacdh">--</span></div>
+            <div><b>MACD Signal:</b> <span id="ga-param-wmacds">--</span></div>
+            <div><b>Preco/SMA:</b> <span id="ga-param-wpsma">--</span></div>
+            <div><b>SMA Trend:</b> <span id="ga-param-wsmat">--</span></div>
+            <div><b>Bollinger:</b> <span id="ga-param-wboll">--</span></div>
+          </div>
+        </div>
+
+        <button class="btn btn-accent btn-lg" onclick="doApplyOptimizedParams()">
+          &#x2705; Aplicar Parametros Otimizados
+        </button>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:8px;">
+          Aplica Stop Loss, Take Profit e Min Score nas configuracoes do bot.
+        </p>
+      </div>
     </div>
 
     <!-- ==================== HELP/MANUAL TAB ==================== -->
@@ -1798,15 +2017,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 Modelo de IA a ser usado para analise. Opcoes disponiveis:
                 <table class="help-table">
                   <tr><th>Modelo</th><th>Provedor</th><th>Caracteristica</th></tr>
-                  <tr><td>GPT-4o</td><td>OpenAI</td><td>Mais inteligente, mais caro</td></tr>
-                  <tr><td>GPT-4o Mini</td><td>OpenAI</td><td>Equilibrio custo/qualidade (padrao)</td></tr>
-                  <tr><td>GPT-4 Turbo</td><td>OpenAI</td><td>Alta performance</td></tr>
+                  <tr><td>GPT-4o &#x1F441;</td><td>OpenAI</td><td>Mais inteligente, visao + texto, mais caro</td></tr>
+                  <tr><td>GPT-4o Mini &#x1F441;</td><td>OpenAI</td><td>Equilibrio custo/qualidade, visao (padrao)</td></tr>
+                  <tr><td>GPT-4 Turbo</td><td>OpenAI</td><td>Alta performance, texto</td></tr>
                   <tr><td>GPT-3.5 Turbo</td><td>OpenAI</td><td>Mais barato, menor qualidade</td></tr>
                   <tr><td>Claude Sonnet</td><td>Anthropic</td><td>Analise detalhada</td></tr>
                   <tr><td>Claude Haiku</td><td>Anthropic</td><td>Rapido e barato</td></tr>
                   <tr><td>DeepSeek Chat</td><td>DeepSeek</td><td>Alternativa economica</td></tr>
+                  <tr><td><strong>Qwen3-VL-8B &#x1F441;</strong></td><td>LM Studio</td><td><strong>Local, gratuito, visao + texto</strong></td></tr>
+                  <tr><td>Qwen3-8B</td><td>LM Studio</td><td>Local, gratuito, texto</td></tr>
                   <tr><td>Custom</td><td>Qualquer</td><td>Modelo personalizado (preencha a Base URL)</td></tr>
                 </table>
+                <div class="help-tip" style="margin-top:8px;">&#x1F441; = Modelo com <strong>Visao (Vision)</strong>: recebe um grafico de candles gerado automaticamente (800x450px com candles, SMA20, SMA50 e volume) para analise visual de padroes como tendencias, suportes, resistencias, doji, martelo, engolfo, etc.</div>
+                <div class="help-tip" style="margin-top:6px;">&#x1F4BB; <strong>LM Studio (Qwen3-VL-8B):</strong> Modelo 100% local e gratuito. Instale o <a href="https://lmstudio.ai" target="_blank" style="color:var(--accent);">LM Studio</a>, baixe o modelo <code>qwen3-vl-8b</code>, inicie o servidor local e use o preset "LM Studio" na configuracao. Requer ~8GB de VRAM (GPU).</div>
               </div>
             </div>
 
@@ -1817,8 +2040,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 <br>Altere para usar provedores alternativos compativeis com a API OpenAI:
                 <br>&#x2022; Anthropic (via proxy): configure o proxy URL
                 <br>&#x2022; DeepSeek: <strong>https://api.deepseek.com/v1</strong>
-                <br>&#x2022; Ollama local: <strong>http://localhost:11434/v1</strong>
-                <br>&#x2022; LM Studio: <strong>http://localhost:1234/v1</strong>
+                <br>&#x2022; <strong>LM Studio: http://localhost:1234/v1</strong> (API Key: qualquer valor)
+                <br>&#x2022; Ollama local: <strong>http://localhost:11434/v1</strong> (API Key: qualquer valor)
+                <br><br>Use os botoes de <strong>Preset Rapido</strong> para configurar automaticamente.
               </div>
             </div>
 
@@ -1872,6 +2096,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             </div>
 
             <div class="help-param">
+              <div class="help-param-name">Score Minimo (pre-filtro IA)</div>
+              <div class="help-param-desc">
+                Score tecnico minimo para enviar uma moeda para analise pela IA. Moedas com score abaixo deste valor sao puladas (economia de tokens).
+                O score e calculado localmente a partir dos indicadores (RSI, MACD, SMA, Bollinger) e vai de 0 a 100 (valor absoluto).
+                <br><strong>Padrao:</strong> 25
+                <br>&#x2022; <strong>10-20:</strong> Mais permissivo &mdash; envia quase tudo para IA, gasta mais tokens mas pega sinais fracos
+                <br>&#x2022; <strong>25-35:</strong> Equilibrado (recomendado) &mdash; filtra ruido obvio, deixa IA decidir nos casos intermediarios
+                <br>&#x2022; <strong>40-60:</strong> Restritivo &mdash; so envia para IA sinais tecnicos ja fortes, economiza tokens mas perde oportunidades
+                <br><br><strong>Se nenhum trade ocorre em dias:</strong> Reduza este valor. Se o mercado esta lateral, a maioria das moedas tera score 10-20.
+              </div>
+            </div>
+
+            <div class="help-param">
               <div class="help-param-name">Intervalo do Bot (segundos)</div>
               <div class="help-param-desc">
                 Tempo em segundos entre cada ciclo de analise do bot automatico.
@@ -1902,10 +2139,85 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <div class="help-param">
               <div class="help-param-name">Modo de Scan</div>
               <div class="help-param-desc">
-                Define como o scanner seleciona moedas para analise.
-                <br><br>&#x2022; <strong>Recuperacao:</strong> Busca moedas com maior variacao positiva no periodo configurado. Ideal para identificar ativos em recuperacao apos quedas.
-                <br>&#x2022; <strong>Volume:</strong> Busca as moedas mais negociadas (maior volume em USDT). Inclui moedas em qualquer direcao (alta ou baixa), priorizando liquidez. Ideal quando combinado com confianca minima alta (70%+).
+                Define como o scanner seleciona moedas para analise. Cada modo usa criterios e fontes de dados diferentes.
                 <br><br><strong>Padrao:</strong> Recuperacao
+
+                <table class="help-table" style="margin-top:10px;">
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:8px 0 4px;">&#x1F3C6; Recuperacao</td></tr>
+                  <tr><td colspan="2">
+                    Busca moedas com <strong>maior variacao positiva</strong> no periodo configurado (padrao 24h). Ideal para identificar ativos em recuperacao apos quedas.
+                    <br><strong>Fonte:</strong> Endpoint <code>/v3/ticker</code> com janela configuravel.
+                    <br><strong>Filtro:</strong> Apenas pares USDT com variacao &gt; 0%. Ordena por variacao descendente.
+                    <br><strong>Coluna:</strong> Mostra a variacao percentual do periodo.
+                    <br><strong>Melhor para:</strong> Pegar moedas que ja iniciaram um movimento de alta &mdash; a IA avalia se o movimento continua.
+                  </td></tr>
+
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:12px 0 4px;">&#x1F4CA; Volume</td></tr>
+                  <tr><td colspan="2">
+                    Busca as moedas <strong>mais negociadas</strong> (maior volume em USDT), independente de direcao. Inclui moedas em alta e em baixa.
+                    <br><strong>Fonte:</strong> Endpoint <code>/v3/ticker</code> com janela configuravel.
+                    <br><strong>Filtro:</strong> Todos os pares USDT. Ordena por volume cotado (quoteVolume) descendente.
+                    <br><strong>Coluna:</strong> Mostra a variacao 24h.
+                    <br><strong>Melhor para:</strong> Maxima liquidez. Combine com confianca minima alta (70%+) &mdash; a IA filtra a direcao.
+                  </td></tr>
+
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:12px 0 4px;">&#x1F534; RSI Extremos</td></tr>
+                  <tr><td colspan="2">
+                    Busca moedas com <strong>RSI abaixo de 30</strong> (sobrevendido) ou <strong>acima de 70</strong> (sobrecomprado). O RSI (Relative Strength Index) mede a forca do movimento recente &mdash; valores extremos indicam possivel reversao.
+                    <br><strong>Fonte:</strong> Calculo local via klines (candles). Pre-filtra as top 50 por volume e calcula RSI de cada uma.
+                    <br><strong>Filtro:</strong> RSI &lt; 30 ou RSI &gt; 70. Ordena por distancia do centro (|RSI - 50|), priorizando os mais extremos.
+                    <br><strong>Coluna:</strong> Mostra o valor do RSI (verde se &lt; 30, vermelho se &gt; 70).
+                    <br><strong>Melhor para:</strong> Estrategia de reversao a media. RSI &lt; 30 = possivel fundo (compra). RSI &gt; 70 = possivel topo (venda se posicionado).
+                    <br><strong>Exemplo:</strong> RSI = 22 &rarr; moeda muito sobrevendida, probabilidade alta de bounce.
+                  </td></tr>
+
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:12px 0 4px;">&#x1F4A5; Breakout (Bollinger Squeeze)</td></tr>
+                  <tr><td colspan="2">
+                    Busca moedas com <strong>Bandas de Bollinger comprimidas</strong> (squeeze) onde o preco esta rompendo uma das bandas. Quando as bandas se estreitam, a volatilidade esta baixa &mdash; o rompimento tende a gerar um movimento explosivo.
+                    <br><strong>Fonte:</strong> Calculo local via klines. Pre-filtra as top 50 por volume e calcula Bollinger de cada uma.
+                    <br><strong>Filtro:</strong> Largura das bandas &lt; 4% da banda media E preco rompendo a banda superior ou inferior. Ordena por largura (mais apertado = melhor).
+                    <br><strong>Coluna:</strong> Mostra a largura do squeeze em percentual (quanto menor, mais comprimido).
+                    <br><strong>Melhor para:</strong> Capturar inicio de movimentos fortes. O squeeze indica acumulo de energia &mdash; o rompimento indica a direcao.
+                    <br><strong>Exemplo:</strong> Squeeze 1.8% com preco acima da banda superior &rarr; rompimento de alta provavel.
+                  </td></tr>
+
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:12px 0 4px;">&#x1F504; MACD Crossover</td></tr>
+                  <tr><td colspan="2">
+                    Busca moedas onde o <strong>histograma MACD acabou de trocar de sinal</strong> (cruzamento recente entre a linha MACD e a linha Signal). Cruzamentos sinalizam mudanca de momentum.
+                    <br><strong>Fonte:</strong> Calculo local via klines. Pre-filtra as top 50 por volume e calcula MACD de cada uma.
+                    <br><strong>Filtro:</strong> Histograma MACD atual e anterior com sinais opostos (positivo &rarr; negativo ou vice-versa). Ordena pela forca do histograma (valor absoluto).
+                    <br><strong>Coluna:</strong> Mostra a forca do MACD (verde se positivo/bullish, vermelho se negativo/bearish).
+                    <br><strong>Melhor para:</strong> Pegar o inicio de uma nova tendencia. Histograma virando positivo = momentum de alta. Virando negativo = momentum de baixa.
+                    <br><strong>Exemplo:</strong> Histograma passou de -0.0003 para +0.0001 &rarr; cruzamento bullish fresco.
+                  </td></tr>
+
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:12px 0 4px;">&#x1F680; Momentum</td></tr>
+                  <tr><td colspan="2">
+                    Busca moedas com <strong>multiplos indicadores alinhados</strong> na mesma direcao, gerando um score composto. Quanto mais indicadores concordam, mais forte a tendencia.
+                    <br><strong>Fonte:</strong> Calculo local via klines. Pre-filtra as top 50 por volume e calcula todos os indicadores.
+                    <br><strong>Filtro:</strong> Score composto &ge; 50 pontos (de 0 a 100). Ordena por score descendente.
+                    <br><strong>Composicao do score:</strong>
+                    <br>&nbsp;&nbsp;&#x2022; SMA20 &gt; SMA50 (media curta acima da longa) = <strong>+25 pts</strong>
+                    <br>&nbsp;&nbsp;&#x2022; RSI entre 50 e 70 (forca sem sobrecompra) = <strong>+20 pts</strong>
+                    <br>&nbsp;&nbsp;&#x2022; Histograma MACD &gt; 0 (momentum positivo) = <strong>+25 pts</strong>
+                    <br>&nbsp;&nbsp;&#x2022; Preco acima da SMA20 = <strong>+15 pts</strong>
+                    <br>&nbsp;&nbsp;&#x2022; EMA12 &gt; EMA26 (cruzamento rapido bullish) = <strong>+15 pts</strong>
+                    <br><strong>Coluna:</strong> Mostra o score total em pontos (verde se &ge; 70, vermelho se &lt; 50).
+                    <br><strong>Melhor para:</strong> Encontrar tendencias ja confirmadas com alta probabilidade de continuacao. Score 80+ = alinhamento quase perfeito.
+                    <br><strong>Exemplo:</strong> Score 85 pts &rarr; todos os indicadores exceto um confirmam alta.
+                  </td></tr>
+
+                  <tr><td colspan="2" style="font-weight:700;color:var(--accent);padding:12px 0 4px;">&#x26A1; Flash Dip</td></tr>
+                  <tr><td colspan="2">
+                    Busca moedas que tiveram <strong>queda abrupta na ultima hora</strong> (&ge; 5%). Quedas subitas podem representar oportunidades de compra se forem exageradas (panic selling).
+                    <br><strong>Fonte:</strong> Endpoint <code>/v3/ticker</code> com janela fixa de <strong>1 hora</strong>.
+                    <br><strong>Filtro:</strong> Variacao &le; -5% na ultima hora. Ordena pela queda mais acentuada.
+                    <br><strong>Coluna:</strong> Mostra a queda percentual em 1h (sempre vermelho).
+                    <br><strong>Melhor para:</strong> Estrategia "buy the dip" &mdash; capturar bounces apos quedas exageradas. Use com confianca minima alta (70%+) pois nem toda queda reverte.
+                    <br><strong>Cuidado:</strong> Quedas fortes podem continuar (knife catching). A IA ajuda a distinguir entre dips compraveis e quedas estruturais.
+                    <br><strong>Exemplo:</strong> Moeda caiu -8.5% em 1h &rarr; possivel panic selling, avaliar bounce.
+                  </td></tr>
+                </table>
               </div>
             </div>
 
@@ -2470,6 +2782,11 @@ function handleDelphiMessage(msg) {
     case 'tradeError':      onTradeError(data); break;
     case 'walletSnapshots': onWalletSnapshots(data); break;
     case 'walletSnapshotAdd': onWalletSnapshotAdd(data); break;
+    case 'optimizeProgress':  onOptimizeProgress(data); break;
+    case 'optimizeResult':    onOptimizeResult(data); break;
+    case 'optimizeApplied':   onOptimizeApplied(data); break;
+    case 'testAIResult':      onTestAIResult(data); break;
+    case 'aiStats':           onAIStats(data); break;
     default: break;
   }
 }
@@ -2532,6 +2849,7 @@ function onUpdateCandles(data) {
 
 function onAddLog(data) {
   appendLog(data.tag, data.message, data.time);
+  if (data.tag === 'Erro') playErrorSound();
 }
 
 function onAddTrade(data) {
@@ -2557,6 +2875,9 @@ function onLoadTrades(data) {
   var trades = data.trades || [];
   state.trades = trades;
   renderTrades();
+  // Recalcula performance com dados atualizados
+  var perfPanel = document.querySelector('[data-tab-panel="performance"]');
+  if (perfPanel) renderPerformance();
 }
 
 function onTradeError(data) {
@@ -2640,12 +2961,27 @@ function onLoadConfig(data) {
   setInputVal('cfg-secretKeyProd', data.secretKeyProd);
   setToggle('cfg-testnet', data.testnet);
   setInputVal('cfg-aiKey', data.aiKey);
-  setInputVal('cfg-aiModel', data.aiModel);
+  // Set AI model: check if it's a known option, else use custom
+  var aiModelSel = document.getElementById('cfg-aiModel');
+  var modelFound = false;
+  if (aiModelSel && data.aiModel) {
+    for (var i = 0; i < aiModelSel.options.length; i++) {
+      if (aiModelSel.options[i].value === data.aiModel) { modelFound = true; break; }
+    }
+    if (modelFound) {
+      aiModelSel.value = data.aiModel;
+    } else {
+      aiModelSel.value = 'custom';
+      setInputVal('cfg-aiModelCustom', data.aiModel);
+    }
+  }
   setInputVal('cfg-aiBaseURL', data.aiBaseURL);
+  onAIModelChange();
   setInputVal('cfg-tradeAmount', data.tradeAmount);
   setInputVal('cfg-stopLoss', data.stopLoss);
   setInputVal('cfg-takeProfit', data.takeProfit);
   setInputVal('cfg-minConfidence', data.minConfidence);
+  setInputVal('cfg-minScore', data.minScore);
   setInputVal('cfg-botInterval', data.botInterval);
   setInputVal('cfg-recoveryHours', data.recoveryHours);
   setInputVal('cfg-topCoins', data.topCoins);
@@ -2677,17 +3013,28 @@ function updateRecoveryLabel() {
   var th = document.getElementById('th-variation');
   var title = document.getElementById('scanner-title');
 
-  if (mode === 'volume') {
-    if (th) th.textContent = 'Variacao 24h';
-    if (title) title.innerHTML = '&#x1F4CA; Top Coins por Volume';
-  } else {
+  var labels = {
+    'recovery':  { col: 'Variacao', title: '&#x1F3C6; Top Recovery Coins' },
+    'volume':    { col: 'Variacao 24h', title: '&#x1F4CA; Top Coins por Volume' },
+    'rsi':       { col: 'RSI', title: '&#x1F534; RSI Extremos' },
+    'breakout':  { col: 'Squeeze %', title: '&#x1F4A5; Breakout (Bollinger)' },
+    'macd':      { col: 'MACD Forca', title: '&#x1F504; MACD Crossover' },
+    'momentum':  { col: 'Score', title: '&#x1F680; Momentum' },
+    'flashdip':  { col: 'Queda 1h', title: '&#x26A1; Flash Dip' },
+    'aiselect':  { col: 'Variacao 24h', title: '&#x1F916; AI Select (Sentiment)' }
+  };
+  var cfg = labels[mode] || labels['recovery'];
+
+  if (mode === 'recovery') {
     var h = state.recoveryHours || 24;
-    var label;
-    if (h < 24) label = h + 'h';
-    else { var d = Math.floor(h / 24); label = d + 'd'; }
-    if (th) th.textContent = 'Variacao ' + label;
-    if (title) title.innerHTML = '&#x1F3C6; Top Recovery Coins (' + label + ')';
+    var p;
+    if (h < 24) p = h + 'h'; else { var d = Math.floor(h / 24); p = d + 'd'; }
+    cfg.col = 'Variacao ' + p;
+    cfg.title = cfg.title + ' (' + p + ')';
   }
+
+  if (th) th.textContent = cfg.col;
+  if (title) title.innerHTML = cfg.title;
 }
 
 function updateApiKeyVisibility() {
@@ -2758,6 +3105,203 @@ function doTestConnection() {
   sendToDelphi('testConnection');
 }
 
+// =====================================================================
+// GENETIC ALGORITHM OPTIMIZER
+// =====================================================================
+var gaLastResult = null;
+
+function doStartOptimize() {
+  document.getElementById('ga-progress-area').style.display = 'block';
+  document.getElementById('btn-start-ga').style.display = 'none';
+  document.getElementById('btn-cancel-ga').style.display = '';
+  document.getElementById('ga-results-card').style.display = 'none';
+  document.getElementById('ga-progress-msg').textContent = 'Iniciando...';
+  document.getElementById('ga-progress-pct').textContent = '0%';
+  document.getElementById('ga-progress-fill').style.width = '0%';
+  document.getElementById('ga-status').textContent = 'Executando...';
+  document.getElementById('ga-status').style.color = 'var(--accent)';
+  sendToDelphi('startOptimize');
+}
+
+function doCancelOptimize() {
+  sendToDelphi('cancelOptimize');
+  document.getElementById('ga-status').textContent = 'Cancelando...';
+}
+
+function onOptimizeProgress(data) {
+  var status = data.status || '';
+  var pct = parseFloat(data.progress) || 0;
+  var msg = data.message || '';
+
+  document.getElementById('ga-progress-msg').textContent = msg;
+  document.getElementById('ga-progress-pct').textContent = Math.round(pct) + '%';
+  document.getElementById('ga-progress-fill').style.width = pct + '%';
+
+  if (status === 'cancelled' || status === 'error') {
+    document.getElementById('btn-start-ga').style.display = '';
+    document.getElementById('btn-cancel-ga').style.display = 'none';
+    document.getElementById('ga-status').textContent = status === 'error' ? 'Erro: ' + msg : 'Cancelado';
+    document.getElementById('ga-status').style.color = 'var(--red)';
+    setTimeout(function() {
+      document.getElementById('ga-progress-area').style.display = 'none';
+    }, 4000);
+  }
+}
+
+function onOptimizeResult(data) {
+  gaLastResult = data;
+  document.getElementById('ga-progress-area').style.display = 'none';
+  document.getElementById('btn-start-ga').style.display = '';
+  document.getElementById('btn-cancel-ga').style.display = 'none';
+  document.getElementById('ga-results-card').style.display = '';
+  document.getElementById('ga-status').textContent = 'Concluido';
+  document.getElementById('ga-status').style.color = 'var(--green)';
+
+  var np = parseFloat(data.netProfit) || 0;
+  document.getElementById('ga-net-profit').textContent = np.toFixed(2) + '%';
+  document.getElementById('ga-net-profit').style.color = np >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('ga-num-trades').textContent = data.numTrades || 0;
+  document.getElementById('ga-max-dd').textContent = (parseFloat(data.maxDrawdown) || 0).toFixed(2) + '%';
+  document.getElementById('ga-win-rate').textContent = (parseFloat(data.winRate) || 0).toFixed(1) + '%';
+  document.getElementById('ga-fitness').textContent = (parseFloat(data.fitness) || 0).toFixed(1);
+  document.getElementById('ga-symbols-used').textContent = data.symbolsUsed || 0;
+
+  document.getElementById('ga-param-sl').textContent = (parseFloat(data.stopLoss) || 0).toFixed(1);
+  document.getElementById('ga-param-tp').textContent = (parseFloat(data.takeProfit) || 0).toFixed(1);
+  document.getElementById('ga-param-ms').textContent = Math.round(parseFloat(data.minScore) || 0);
+  document.getElementById('ga-param-rsi-os').textContent = Math.round(parseFloat(data.rsiOversold) || 30);
+  document.getElementById('ga-param-rsi-ob').textContent = Math.round(parseFloat(data.rsiOverbought) || 70);
+  document.getElementById('ga-param-wrsi').textContent = (parseFloat(data.wRSI) || 0).toFixed(1);
+  document.getElementById('ga-param-wmacdh').textContent = (parseFloat(data.wMACDHist) || 0).toFixed(1);
+  document.getElementById('ga-param-wmacds').textContent = (parseFloat(data.wMACDSignal) || 0).toFixed(1);
+  document.getElementById('ga-param-wpsma').textContent = (parseFloat(data.wPriceSMA) || 0).toFixed(1);
+  document.getElementById('ga-param-wsmat').textContent = (parseFloat(data.wSMATrend) || 0).toFixed(1);
+  document.getElementById('ga-param-wboll').textContent = (parseFloat(data.wBollinger) || 0).toFixed(1);
+}
+
+function doApplyOptimizedParams() {
+  if (!gaLastResult) return;
+  sendToDelphi('applyOptimizedParams', {
+    stopLoss: gaLastResult.stopLoss,
+    takeProfit: gaLastResult.takeProfit,
+    minScore: gaLastResult.minScore
+  });
+}
+
+function onOptimizeApplied(data) {
+  var slEl = document.getElementById('cfg-stopLoss');
+  var tpEl = document.getElementById('cfg-takeProfit');
+  var msEl = document.getElementById('cfg-minScore');
+  if (slEl) slEl.value = data.stopLoss || '';
+  if (tpEl) tpEl.value = data.takeProfit || '';
+  if (msEl) msEl.value = data.minScore || '';
+  document.getElementById('ga-status').textContent = 'Parametros aplicados!';
+  document.getElementById('ga-status').style.color = 'var(--green)';
+}
+
+function doTestAI() {
+  var btn = document.getElementById('btn-test-ai');
+  var res = document.getElementById('ai-test-result');
+  btn.disabled = true;
+  btn.textContent = 'Testando...';
+  res.textContent = 'Aguardando resposta...';
+  res.style.color = 'var(--text-muted)';
+  sendToDelphi('testAI', {
+    aiKey: getInputVal('cfg-aiKey'),
+    aiModel: getEffectiveAIModel(),
+    aiBaseURL: getInputVal('cfg-aiBaseURL')
+  });
+}
+
+function onAIStats(data) {
+  var bar = document.getElementById('ai-stats-bar');
+  if (!bar) return;
+  bar.style.display = '';
+  document.getElementById('ai-st-calls').textContent = data.calls || 0;
+  var avg = data.avgTimeSec || 0;
+  document.getElementById('ai-st-avg').textContent = avg.toFixed(1) + 's';
+  document.getElementById('ai-st-tkin').textContent = formatTokens(data.tokensIn || 0);
+  document.getElementById('ai-st-tkout').textContent = formatTokens(data.tokensOut || 0);
+  var cavg = data.costAvg || 0;
+  var ctotal = data.costTotal || 0;
+  document.getElementById('ai-st-cavg').textContent = '$' + cavg.toFixed(6);
+  document.getElementById('ai-st-ctotal').textContent = '$' + ctotal.toFixed(4);
+}
+function formatTokens(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function onTestAIResult(data) {
+  var btn = document.getElementById('btn-test-ai');
+  var res = document.getElementById('ai-test-result');
+  btn.disabled = false;
+  btn.textContent = 'Testar Conexao IA';
+  if (data.success) {
+    res.textContent = 'OK! ' + (data.message || '');
+    res.style.color = 'var(--green)';
+  } else {
+    res.textContent = 'Falhou: ' + (data.message || 'Erro desconhecido');
+    res.style.color = 'var(--red)';
+  }
+}
+
+function isVisionModel(model) {
+  var m = (model || '').toLowerCase();
+  return m.indexOf('vl') >= 0 || m.indexOf('vision') >= 0 ||
+         m.indexOf('gpt-4o') >= 0 || m.indexOf('gemini') >= 0;
+}
+
+function onAIModelChange() {
+  var sel = document.getElementById('cfg-aiModel');
+  var val = sel.value;
+  var customGrp = document.getElementById('ai-custom-model-group');
+  var badge = document.getElementById('ai-vision-badge');
+  var info = document.getElementById('ai-vision-info');
+  customGrp.style.display = val === 'custom' ? '' : 'none';
+  var modelName = val === 'custom' ? getInputVal('cfg-aiModelCustom') : val;
+  var isVis = isVisionModel(modelName);
+  badge.style.display = isVis ? '' : 'none';
+  info.style.display = isVis ? '' : 'none';
+}
+
+function applyAIPreset(preset) {
+  var sel = document.getElementById('cfg-aiModel');
+  var url = document.getElementById('cfg-aiBaseURL');
+  var key = document.getElementById('cfg-aiKey');
+  switch (preset) {
+    case 'openai':
+      sel.value = 'gpt-4o-mini';
+      url.value = 'https://api.openai.com/v1';
+      key.placeholder = 'sk-...';
+      break;
+    case 'deepseek':
+      sel.value = 'deepseek-chat';
+      url.value = 'https://api.deepseek.com/v1';
+      key.placeholder = 'sk-...';
+      break;
+    case 'lmstudio':
+      sel.value = 'qwen3-vl-8b';
+      url.value = 'http://localhost:1234/v1';
+      key.value = 'lm-studio';
+      break;
+    case 'ollama':
+      sel.value = 'custom';
+      document.getElementById('cfg-aiModelCustom').value = 'qwen3:8b';
+      url.value = 'http://localhost:11434/v1';
+      key.value = 'ollama';
+      break;
+  }
+  onAIModelChange();
+}
+
+function getEffectiveAIModel() {
+  var sel = document.getElementById('cfg-aiModel');
+  if (sel.value === 'custom') return getInputVal('cfg-aiModelCustom');
+  return sel.value;
+}
+
 function doSaveConfig() {
   var cfg = {
     apiKeyTest: getInputVal('cfg-apiKeyTest'),
@@ -2766,12 +3310,13 @@ function doSaveConfig() {
     secretKeyProd: getInputVal('cfg-secretKeyProd'),
     testnet: getToggle('cfg-testnet'),
     aiKey: getInputVal('cfg-aiKey'),
-    aiModel: getInputVal('cfg-aiModel'),
+    aiModel: getEffectiveAIModel(),
     aiBaseURL: getInputVal('cfg-aiBaseURL'),
     tradeAmount: parseFloat(getInputVal('cfg-tradeAmount')) || 10,
     stopLoss: parseFloat(getInputVal('cfg-stopLoss')) || 2,
     takeProfit: parseFloat(getInputVal('cfg-takeProfit')) || 3,
     minConfidence: parseFloat(getInputVal('cfg-minConfidence')) || 70,
+    minScore: parseInt(getInputVal('cfg-minScore'), 10) || 25,
     botInterval: parseInt(getInputVal('cfg-botInterval'), 10) || 60,
     scanMode: (document.getElementById('cfg-scanMode') || {}).value || 'recovery',
     recoveryHours: parseInt(getInputVal('cfg-recoveryHours'), 10) || 24,
@@ -2845,20 +3390,43 @@ function renderCoinsTable() {
     return;
   }
 
+  var mode = state.scanMode || 'recovery';
   var html = '';
   for (var i = 0; i < state.coins.length; i++) {
     var coin = state.coins[i];
     var isSelected = coin.symbol === state.selectedCoin;
+    var metric = parseFloat(coin.scanMetric) || 0;
     var change = parseFloat(coin.changePercent) || 0;
-    var changeClass = change >= 0 ? 'positive' : 'negative';
-    var changePrefix = change >= 0 ? '+' : '';
+    var metricText, metricClass;
+
+    if (mode === 'rsi') {
+      metricClass = metric < 30 ? 'positive' : (metric > 70 ? 'negative' : '');
+      metricText = metric.toFixed(1);
+    } else if (mode === 'breakout') {
+      metricClass = 'positive';
+      metricText = metric.toFixed(2) + '%';
+    } else if (mode === 'macd') {
+      metricClass = metric >= 0 ? 'positive' : 'negative';
+      metricText = metric.toFixed(6);
+    } else if (mode === 'momentum') {
+      metricClass = metric >= 70 ? 'positive' : (metric < 50 ? 'negative' : '');
+      metricText = metric.toFixed(0) + ' pts';
+    } else if (mode === 'flashdip') {
+      metricClass = 'negative';
+      metricText = change.toFixed(2) + '%';
+    } else {
+      // recovery, volume, aiselect
+      metricClass = change >= 0 ? 'positive' : 'negative';
+      metricText = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+    }
+
     var rowClass = isSelected ? 'selected-row' : '';
 
     html += '<tr class="' + rowClass + '" onclick="doSelectCoin(\'' + escapeAttr(coin.symbol) + '\')">';
     html += '<td>' + (i + 1) + '</td>';
     html += '<td style="font-weight:600;color:var(--accent);">' + escapeHtml(formatSymbol(coin.symbol)) + '</td>';
     html += '<td>' + formatPrice(coin.price) + '</td>';
-    html += '<td class="' + changeClass + '">' + changePrefix + change.toFixed(2) + '%</td>';
+    html += '<td class="' + metricClass + '">' + metricText + '</td>';
     html += '<td>' + formatVolume(coin.quoteVolume || coin.volume) + '</td>';
     html += '<td><button class="btn btn-accent btn-sm" onclick="event.stopPropagation();doSelectCoin(\'' + escapeAttr(coin.symbol) + '\')">Selecionar</button></td>';
     html += '</tr>';
@@ -3320,6 +3888,29 @@ function playTradeSound(side) {
   } catch(e) { console.warn('Audio error:', e); }
 }
 
+function playErrorSound() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var now = audioCtx.currentTime;
+    // 3 tons descendentes curtos (erro)
+    [520, 400, 300].forEach(function(freq, i) {
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.12, now + i * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.15);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + i * 0.12);
+      osc.stop(now + i * 0.12 + 0.15);
+    });
+  } catch(e) { console.warn('Audio error:', e); }
+}
+
 function formatPrice(val) {
   if (val == null || val === '' || val === '--') return '--';
   var n = parseFloat(val);
@@ -3685,9 +4276,12 @@ function calculatePerformance() {
     } else if (t.side === 'SELL' && buyQueues[sym].length > 0) {
       // Match with oldest BUY
       var buy = buyQueues[sym].shift();
+      var FEE_PCT = 0.2; // Round-trip fee: 0.1% buy + 0.1% sell
       var matchQty = Math.min(buy.quantity, qty);
-      var pnl = (price - buy.price) * matchQty;
-      var pnlPct = buy.price > 0 ? ((price - buy.price) / buy.price) * 100 : 0;
+      var grossPnl = (price - buy.price) * matchQty;
+      var feeCost = (buy.price * matchQty + price * matchQty) * (FEE_PCT / 200); // 0.1% de cada lado
+      var pnl = grossPnl - feeCost;
+      var pnlPct = buy.price > 0 ? ((price - buy.price) / buy.price) * 100 - FEE_PCT : 0;
       var sellDate = parseTradeTimestamp(t.timestamp);
       var duration = sellDate - buy.date;
 

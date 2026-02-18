@@ -5,7 +5,7 @@ interface
 uses
   System.SysUtils, System.Classes, System.JSON, System.DateUtils, System.Math,
   System.NetEncoding, System.Hash, System.Net.HttpClient,
-  System.Net.URLClient, System.Generics.Collections,
+  System.Net.URLClient, System.Generics.Collections, System.Generics.Defaults,
   uTypes;
 
 type
@@ -36,6 +36,7 @@ type
     function Get24hTicker(const Symbol: string): TJSONObject;
     function GetAll24hTickers: TJSONArray;
     function GetAllTickersWindow(const WindowSize: string = '1d'): TJSONArray;
+    function GetAISelectSymbols: TArray<string>;
     // Account
     function GetBalance(const Asset: string): TAssetBalance;
     function GetAllBalances(MinTotal: Double = 0): TAssetBalanceArray;
@@ -44,6 +45,8 @@ type
     function AdjustQuantity(Qty, StepSize, MinQty: Double): Double;
     function PlaceOrder(const Symbol: string; Side: TOrderSide; OType: TOrderType;
       Quantity: Double; Price: Double = 0): TOrderResult;
+    // Trade History
+    function GetMyTrades(const Symbol: string; Limit: Integer = 50): TJSONArray;
     // Util
     function TestConnectivity: Boolean;
     property ApiKey: string read FApiKey write SetApiKey;
@@ -187,7 +190,13 @@ begin
     if Resp.StatusCode = 200 then
     begin
       Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
-      Log('OK: ' + Method + ' ' + Endpoint);
+      if (not Signed) and (Pos('/ticker/price', Endpoint) = 0) then
+      begin
+        if Params <> '' then
+          Log('OK: ' + Method + ' ' + Endpoint + '?' + Params)
+        else
+          Log('OK: ' + Method + ' ' + Endpoint);
+      end;
     end else
     begin
       Log('ERRO ' + IntToStr(Resp.StatusCode) + ': ' + Resp.ContentAsString(TEncoding.UTF8));
@@ -212,7 +221,14 @@ begin
     if Resp.StatusCode = 200 then
     begin
       Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
-      Log('OK: ' + Method + ' ' + Endpoint);
+      // Nao loga ticker/price (chamado a cada 5s pelo timer, polui o log)
+      if Pos('/ticker/price', Endpoint) = 0 then
+      begin
+        if Params <> '' then
+          Log('OK: ' + Method + ' ' + Endpoint + '?' + Params)
+        else
+          Log('OK: ' + Method + ' ' + Endpoint);
+      end;
     end else
     begin
       Log('ERRO ' + IntToStr(Resp.StatusCode) + ': ' + Resp.ContentAsString(TEncoding.UTF8));
@@ -432,6 +448,94 @@ begin
   end;
 end;
 
+function TBinanceAPI.GetAISelectSymbols: TArray<string>;
+var
+  URL: string;
+  Resp: IHTTPResponse;
+  J: TJSONValue;
+  JObj: TJSONObject;
+  Arr: TJSONArray;
+  I, LRank: Integer;
+  Asset, Sym: string;
+  Ranked: TList<TPair<Integer, string>>;
+begin
+  Result := nil;
+  URL := 'https://www.binance.com/bapi/apex/v1/friendly/apex/web/opportunity/assets?interval=24h&type=sentiment';
+  try
+    Resp := FHttp.Get(URL);
+    Log('AI Select: HTTP ' + IntToStr(Resp.StatusCode));
+    if Resp.StatusCode = 200 then
+    begin
+      var LRaw := Resp.ContentAsString(TEncoding.UTF8);
+      J := TJSONObject.ParseJSONValue(LRaw);
+      if J = nil then
+      begin
+        Log('AI Select: JSON parse falhou, resp=' + Copy(LRaw, 1, 200));
+        Exit;
+      end;
+      try
+        Arr := nil;
+        // Estrutura: { "data": { "items": [...] } }
+        var LItems := J.FindValue('data.items');
+        if (LItems <> nil) and (LItems is TJSONArray) then
+          Arr := TJSONArray(LItems)
+        else
+        begin
+          // Fallback: data direto como array
+          var LData := J.FindValue('data');
+          if (LData <> nil) and (LData is TJSONArray) then
+            Arr := TJSONArray(LData);
+        end;
+
+        if Arr = nil then
+        begin
+          Log('AI Select: campo data.items nao encontrado');
+          Exit;
+        end;
+
+        Log(Format('AI Select: %d itens no JSON', [Arr.Count]));
+        Ranked := TList<TPair<Integer, string>>.Create;
+        try
+          for I := 0 to Arr.Count - 1 do
+          begin
+            if not (Arr.Items[I] is TJSONObject) then Continue;
+            var LItem := TJSONObject(Arr.Items[I]);
+            Asset := LItem.GetValue<string>('asset', '');
+            LRank := LItem.GetValue<Integer>('rank', 9999);
+            // Filtra apenas sentimento positivo: "Strong Positive" ou "Positive"
+            var LLabel := '';
+            var LSentVal := LItem.FindValue('metrics.sentiment_score.valueLabel');
+            if LSentVal <> nil then
+              LLabel := LSentVal.Value;
+            if (Asset <> '') and (Pos('Positive', LLabel) > 0) then
+            begin
+              Sym := Asset + 'USDT';
+              Ranked.Add(TPair<Integer, string>.Create(LRank, Sym));
+            end;
+          end;
+          // Ordena por rank
+          Ranked.Sort(TComparer<TPair<Integer, string>>.Construct(
+            function(const A, B: TPair<Integer, string>): Integer
+            begin
+              Result := A.Key - B.Key;
+            end));
+          SetLength(Result, Ranked.Count);
+          for I := 0 to Ranked.Count - 1 do
+            Result[I] := Ranked[I].Value;
+          Log(Format('AI Select: %d moedas da Binance (sentiment)', [Length(Result)]));
+        finally
+          Ranked.Free;
+        end;
+      finally
+        J.Free;
+      end;
+    end;
+  except
+    on E: Exception do
+      Log('AI Select: ' + E.Message);
+  end;
+end;
+
 function TBinanceAPI.GetSymbolFilters(const Symbol: string; out MinQty, StepSize, MinNotional: Double): Boolean;
 var
   J: TJSONValue;
@@ -528,7 +632,16 @@ begin
     LNotional := LAdjQty * LCurrentPrice;
     if LNotional < LMinNotional then
     begin
-      // Aumenta qty para atingir o notional minimo
+      if Side = osSell then
+      begin
+        // SELL: nao pode aumentar qty alem do que temos
+        Result.ErrorMsg := Format('Valor da posicao ($%.2f) abaixo do minimo notional ($%.2f). ' +
+          'Use "Converter pequenos saldos" na Binance.',
+          [LNotional, LMinNotional]);
+        Log('Erro: ' + Result.ErrorMsg);
+        Exit;
+      end;
+      // BUY: aumenta qty para atingir o notional minimo
       LAdjQty := Ceil(LMinNotional / LCurrentPrice / LStepSize) * LStepSize;
       LNotional := LAdjQty * LCurrentPrice;
       Log(Format('Ajustando qty para notional minimo: %s (valor: $%s)',
@@ -556,9 +669,34 @@ begin
       begin
         Result.OrderId := O.GetValue<Int64>('orderId');
         Result.Status := O.GetValue<string>('status', '');
-        Result.Price := StrToFloatDef(O.GetValue<string>('price', '0'), Price, FmtDot);
+        Result.Price := StrToFloatDef(O.GetValue<string>('price', '0'), 0, FmtDot);
+        // Para ordens MARKET, price=0 - extrair preco real dos fills
+        if (Result.Price <= 0) then
+        begin
+          var Fills := O.GetValue<TJSONArray>('fills');
+          if (Fills <> nil) and (Fills.Count > 0) then
+          begin
+            var TotalQty: Double := 0;
+            var TotalCost: Double := 0;
+            for var FI := 0 to Fills.Count - 1 do
+            begin
+              var Fill := TJSONObject(Fills.Items[FI]);
+              var FP := StrToFloatDef(Fill.GetValue<string>('price', '0'), 0, FmtDot);
+              var FQ := StrToFloatDef(Fill.GetValue<string>('qty', '0'), 0, FmtDot);
+              TotalCost := TotalCost + (FP * FQ);
+              TotalQty := TotalQty + FQ;
+            end;
+            if TotalQty > 0 then
+              Result.Price := TotalCost / TotalQty;
+          end;
+        end;
+        // Fallback: usar preco passado como parametro
+        if Result.Price <= 0 then
+          Result.Price := Price;
+        Result.Quantity := StrToFloatDef(O.GetValue<string>('executedQty', '0'), Quantity, FmtDot);
         Result.Success := True;
-        Log('Ordem OK! ID=' + IntToStr(Result.OrderId));
+        Log(Format('Ordem OK! ID=%d Preco=%.8f Qty=%.8f',
+          [Result.OrderId, Result.Price, Result.Quantity], FmtDot));
       end else
       begin
         Result.ErrorMsg := O.GetValue<string>('msg', 'Erro desconhecido');
@@ -569,6 +707,24 @@ begin
   finally
     J.Free;
   end;
+end;
+
+function TBinanceAPI.GetMyTrades(const Symbol: string; Limit: Integer): TJSONArray;
+var J: TJSONValue;
+begin
+  Result := nil;
+  J := DoRequest('GET', '/v3/myTrades',
+    Format('symbol=%s&limit=%d', [Symbol, Limit]), True);
+  try
+    if (J <> nil) and (J is TJSONArray) then
+    begin
+      Result := TJSONArray(J.Clone);
+    end;
+  finally
+    J.Free;
+  end;
+  if Result = nil then
+    Result := TJSONArray.Create;
 end;
 
 function TBinanceAPI.TestConnectivity: Boolean;
