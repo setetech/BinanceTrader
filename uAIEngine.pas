@@ -3,7 +3,7 @@ unit uAIEngine;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.JSON, System.Math,
+  System.SysUtils, System.Classes, System.JSON, System.Math, System.StrUtils,
   System.Net.HttpClient, System.Net.URLClient, System.NetEncoding,
   Vcl.Graphics, Vcl.Imaging.pngimage,
   uTypes;
@@ -14,6 +14,7 @@ type
     FApiKey, FModel, FBaseURL: string;
     FIsVisionModel: Boolean;
     FIsThinkingModel: Boolean;
+    FUseVision: Boolean;
     FHttp: THTTPClient;
     FOnLog: TProc<string>;
     FLastPromptTokens: Integer;
@@ -38,6 +39,7 @@ type
     property BaseURL: string read FBaseURL write FBaseURL;
     property IsVisionModel: Boolean read FIsVisionModel;
     property IsThinkingModel: Boolean read FIsThinkingModel;
+    property UseVision: Boolean read FUseVision write FUseVision;
     property OnLog: TProc<string> read FOnLog write FOnLog;
     property LastPromptTokens: Integer read FLastPromptTokens;
     property LastCompletionTokens: Integer read FLastCompletionTokens;
@@ -608,12 +610,13 @@ const
 var
   Resp, ChartB64, SysPrompt: string;
 begin
-  Log('Analisando ' + Symbol + '...');
+  Log(Format('Analisando %s | Modelo: %s | Vision: %s | URL: %s',
+    [Symbol, FModel, IfThen(FIsVisionModel and FUseVision, 'SIM', 'NAO'), FBaseURL]));
 
   ChartB64 := '';
   SysPrompt := SYS_PROMPT_TEXT;
 
-  if FIsVisionModel then
+  if FIsVisionModel and FUseVision then
   begin
     Log('Gerando grafico para modelo de visao...');
     try

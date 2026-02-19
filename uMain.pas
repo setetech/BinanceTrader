@@ -89,6 +89,7 @@ type
     procedure DoCancelOptimize;
     procedure DoApplyOptimizedParams(Data: TJSONObject);
     procedure DoLoadBinanceTrades;
+    procedure DoCoinHistory(const Symbol: string);
 
     // Updates
     procedure UpdatePrice;
@@ -259,6 +260,7 @@ begin
     end;
 
   FAIEngine := TAIEngine.Create(GetCfgStr('aiKey', ''), GetCfgStr('aiModel', 'gpt-4o-mini'));
+  FAIEngine.UseVision := GetCfgBool('aiVision', False);
   FAIEngine.OnLog := procedure(AMsg: string)
     begin
       TThread.Queue(nil, procedure begin AddLog('IA', AMsg); end);
@@ -493,7 +495,12 @@ begin
   else if Action = 'startOptimize' then DoOptimize
   else if Action = 'cancelOptimize' then DoCancelOptimize
   else if Action = 'applyOptimizedParams' then DoApplyOptimizedParams(Data)
-  else if Action = 'loadBinanceTrades' then DoLoadBinanceTrades;
+  else if Action = 'loadBinanceTrades' then DoLoadBinanceTrades
+  else if Action = 'coinHistory' then
+  begin
+    if Data <> nil then
+      DoCoinHistory(Data.GetValue<string>('symbol', ''));
+  end;
 end;
 
 { ================================================================
@@ -519,6 +526,7 @@ begin
   LCfg.AddPair('testnet',      TJSONBool.Create(GetCfgBool('testnet', True)));
   LCfg.AddPair('aiKey',        GetCfgStr('aiKey', ''));
   LCfg.AddPair('aiModel',      GetCfgStr('aiModel', 'gpt-4o-mini'));
+  LCfg.AddPair('aiVision',     TJSONBool.Create(GetCfgBool('aiVision', False)));
   LCfg.AddPair('aiBaseURL',    GetCfgStr('aiBaseURL', ''));
   LCfg.AddPair('tradeAmount',  GetCfgStr('tradeAmount', '100'));
   LCfg.AddPair('stopLoss',     GetCfgStr('stopLoss', '2.0'));
@@ -1705,6 +1713,7 @@ begin
 
   FAIEngine.ApiKey := GetCfgStr('aiKey', '');
   FAIEngine.Model := GetCfgStr('aiModel', 'gpt-4o-mini');
+  FAIEngine.UseVision := GetCfgBool('aiVision', False);
   var LURL := GetCfgStr('aiBaseURL', '');
   if LURL <> '' then FAIEngine.BaseURL := LURL
   else FAIEngine.BaseURL := 'https://api.openai.com/v1';
@@ -1909,6 +1918,115 @@ begin
       begin
         var LErr := 'Erro ao buscar trades: ' + E.Message;
         TThread.Synchronize(nil, procedure begin AddLog('Erro', LErr); end);
+      end;
+    end;
+  end).Start;
+end;
+
+procedure TfrmMain.DoCoinHistory(const Symbol: string);
+begin
+  if Symbol = '' then Exit;
+
+  TThread.CreateAnonymousThread(procedure
+  var
+    LCandles1h, LCandles24h: TCandleArray;
+    LTicker: TJSONObject;
+    D: TJSONObject;
+    A1h, A24h: TJSONArray;
+    C: TJSONObject;
+    I: Integer;
+    LLastPrice, LPriceChange, LPriceChangePct: Double;
+    LHighPrice, LLowPrice, LVolume, LQuoteVolume: Double;
+  begin
+    try
+      // 1h de candles de 1 minuto (60 pontos)
+      LCandles1h := FBinance.GetKlines(Symbol, '1m', 60);
+      // 24h de candles de 15 minutos (96 pontos)
+      LCandles24h := FBinance.GetKlines(Symbol, '15m', 96);
+
+      // Stats 24h
+      LLastPrice := 0; LPriceChange := 0; LPriceChangePct := 0;
+      LHighPrice := 0; LLowPrice := 0; LVolume := 0; LQuoteVolume := 0;
+      LTicker := FBinance.Get24hTicker(Symbol);
+      try
+        if LTicker <> nil then
+        begin
+          LLastPrice := StrToFloatDef(LTicker.GetValue<string>('lastPrice', '0'), 0, FmtDot);
+          LPriceChange := StrToFloatDef(LTicker.GetValue<string>('priceChange', '0'), 0, FmtDot);
+          LPriceChangePct := StrToFloatDef(LTicker.GetValue<string>('priceChangePercent', '0'), 0, FmtDot);
+          LHighPrice := StrToFloatDef(LTicker.GetValue<string>('highPrice', '0'), 0, FmtDot);
+          LLowPrice := StrToFloatDef(LTicker.GetValue<string>('lowPrice', '0'), 0, FmtDot);
+          LVolume := StrToFloatDef(LTicker.GetValue<string>('volume', '0'), 0, FmtDot);
+          LQuoteVolume := StrToFloatDef(LTicker.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
+        end;
+      finally
+        LTicker.Free;
+      end;
+
+      // Monta JSON compacto
+      D := TJSONObject.Create;
+      try
+        D.AddPair('symbol', Symbol);
+        D.AddPair('lastPrice', TJSONNumber.Create(LLastPrice));
+        D.AddPair('priceChange', TJSONNumber.Create(LPriceChange));
+        D.AddPair('priceChangePct', TJSONNumber.Create(LPriceChangePct));
+        D.AddPair('highPrice', TJSONNumber.Create(LHighPrice));
+        D.AddPair('lowPrice', TJSONNumber.Create(LLowPrice));
+        D.AddPair('volume', TJSONNumber.Create(LVolume));
+        D.AddPair('quoteVolume', TJSONNumber.Create(LQuoteVolume));
+
+        // Candles 1h (1m interval)
+        A1h := TJSONArray.Create;
+        for I := 0 to High(LCandles1h) do
+        begin
+          C := TJSONObject.Create;
+          C.AddPair('o', TJSONNumber.Create(LCandles1h[I].Open));
+          C.AddPair('h', TJSONNumber.Create(LCandles1h[I].High));
+          C.AddPair('l', TJSONNumber.Create(LCandles1h[I].Low));
+          C.AddPair('c', TJSONNumber.Create(LCandles1h[I].Close));
+          C.AddPair('v', TJSONNumber.Create(LCandles1h[I].Volume));
+          C.AddPair('t', TJSONNumber.Create(DateTimeToUnix(LCandles1h[I].OpenTime, False) * Int64(1000)));
+          A1h.AddElement(C);
+        end;
+        D.AddPair('candles1h', A1h);
+
+        // Candles 24h (15m interval)
+        A24h := TJSONArray.Create;
+        for I := 0 to High(LCandles24h) do
+        begin
+          C := TJSONObject.Create;
+          C.AddPair('o', TJSONNumber.Create(LCandles24h[I].Open));
+          C.AddPair('h', TJSONNumber.Create(LCandles24h[I].High));
+          C.AddPair('l', TJSONNumber.Create(LCandles24h[I].Low));
+          C.AddPair('c', TJSONNumber.Create(LCandles24h[I].Close));
+          C.AddPair('v', TJSONNumber.Create(LCandles24h[I].Volume));
+          C.AddPair('t', TJSONNumber.Create(DateTimeToUnix(LCandles24h[I].OpenTime, False) * Int64(1000)));
+          A24h.AddElement(C);
+        end;
+        D.AddPair('candles24h', A24h);
+
+        TThread.Queue(nil, procedure
+        begin
+          SendToJS('coinHistoryData', D);
+          D.Free;
+        end);
+      except
+        D.Free;
+        raise;
+      end;
+    except
+      on E: Exception do
+      begin
+        var LErr := E.Message;
+        TThread.Queue(nil, procedure
+        var DEr: TJSONObject;
+        begin
+          DEr := TJSONObject.Create;
+          DEr.AddPair('symbol', Symbol);
+          DEr.AddPair('error', LErr);
+          SendToJS('coinHistoryData', DEr);
+          DEr.Free;
+        end);
       end;
     end;
   end).Start;
@@ -2129,7 +2247,7 @@ function TfrmMain.GetCfgDbl(const Key: string; Default: Double): Double;
 begin Result := StrToFloatDef(FConfig.GetValue<string>(Key, FloatToStr(Default, FmtDot)), Default, FmtDot); end;
 
 function TfrmMain.GetInterval: string;
-begin Result := GetCfgStr('interval', '1h'); end;
+begin Result := GetCfgStr('interval', '4h'); end;
 
 procedure TfrmMain.LoadConfig;
 var Ini: TIniFile;
@@ -2145,6 +2263,7 @@ begin
     FConfig.AddPair('testnet',       TJSONBool.Create(Ini.ReadBool('Binance', 'Testnet', True)));
     FConfig.AddPair('aiKey',         Ini.ReadString('AI', 'ApiKey', ''));
     FConfig.AddPair('aiModel',       Ini.ReadString('AI', 'Model', 'gpt-4o-mini'));
+    FConfig.AddPair('aiVision',      TJSONBool.Create(Ini.ReadBool('AI', 'Vision', False)));
     FConfig.AddPair('aiBaseURL',     Ini.ReadString('AI', 'BaseURL', ''));
     FConfig.AddPair('interval',      Ini.ReadString('Trading', 'Interval', '1h'));
     FConfig.AddPair('tradeAmount',   Ini.ReadString('Trading', 'Amount', '100'));
@@ -2177,6 +2296,7 @@ begin
     Ini.WriteBool  ('Binance', 'Testnet',       GetCfgBool('testnet', True));
     Ini.WriteString('AI',      'ApiKey',        GetCfgStr('aiKey', ''));
     Ini.WriteString('AI',      'Model',         GetCfgStr('aiModel', 'gpt-4o-mini'));
+    Ini.WriteBool  ('AI',      'Vision',        GetCfgBool('aiVision', False));
     Ini.WriteString('AI',      'BaseURL',       GetCfgStr('aiBaseURL', ''));
     Ini.WriteString('Trading', 'Interval',      GetCfgStr('interval', '1h'));
     Ini.WriteString('Trading', 'Amount',        GetCfgStr('tradeAmount', '100'));
@@ -2283,15 +2403,57 @@ begin
     LHasPos: Boolean;
     LBuyPrice: Double;
     LAISent, LAISkipped: Integer;
+    LCanBuy: Boolean;
+    LUSDTBalance: Double;
   begin
     LAISent := 0;
     LAISkipped := 0;
+
+    // Verifica saldo USDT antes de iniciar o ciclo
+    LCanBuy := True;
+    try
+      LUSDTBalance := FBinance.GetBalance('USDT').Free;
+      if LUSDTBalance < LTradeAmt then
+      begin
+        LCanBuy := False;
+        var LBalMsg := Format('Saldo USDT: %.2f < %.2f (minimo p/ trade) - analisando apenas moedas com posicao aberta',
+          [LUSDTBalance, LTradeAmt]);
+        TThread.Synchronize(nil, procedure begin AddLog('Bot', LBalMsg); end);
+      end;
+    except
+      on E: Exception do
+      begin
+        var LBalErr := 'Erro ao consultar saldo USDT: ' + E.Message;
+        TThread.Synchronize(nil, procedure begin AddLog('Erro', LBalErr); end);
+      end;
+    end;
+
     try
       for CI := 0 to High(LCoins) do
       begin
         if not FBotRunning then Break;
 
         LSymbol := LCoins[CI].Symbol;
+
+        // 0. Se nao pode comprar, verifica se tem posicao aberta antes de gastar API
+        if not LCanBuy then
+        begin
+          LHasPos := False;
+          for var PIdx := 0 to FOpenPositions.Count - 1 do
+            if FOpenPositions[PIdx].Symbol = LSymbol then
+            begin
+              LHasPos := True;
+              Break;
+            end;
+          if not LHasPos then
+          begin
+            Inc(LAISkipped);
+            var LSkipBalMsg := Format('(%d/%d) %s: Sem saldo p/ compra e sem posicao - pulando',
+              [CI + 1, Length(LCoins), LSymbol]);
+            TThread.Synchronize(nil, procedure begin AddLog('Bot', LSkipBalMsg); end);
+            Continue;
+          end;
+        end;
 
         // 1. Busca candles
         try

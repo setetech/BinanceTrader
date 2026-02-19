@@ -931,6 +931,71 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .wallet-table-card .card-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: block; }
 .wallet-table-card table { width: 100%; }
 .wallet-loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
+
+/* ===== COIN HISTORY MODAL ===== */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 560px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  animation: modalIn 0.2s ease-out;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header-left { display: flex; align-items: baseline; gap: 10px; }
+.modal-symbol { font-size: 18px; font-weight: 700; color: var(--accent); }
+.modal-price { font-size: 16px; font-weight: 600; }
+.modal-change { font-size: 13px; font-weight: 600; }
+.modal-close-btn {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 22px; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+}
+.modal-close-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+.modal-body { padding: 16px 20px; }
+.modal-tf-btns { display: flex; gap: 8px; margin-bottom: 12px; }
+.modal-tf-btn {
+  padding: 5px 16px; border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--text-muted); font-size: 12px;
+  font-weight: 600; cursor: pointer;
+}
+.modal-tf-btn.active { background: var(--accent); color: #0b0e11; border-color: var(--accent); }
+.modal-chart-wrapper {
+  background: var(--bg-primary); border-radius: 6px; padding: 8px; margin-bottom: 16px;
+}
+.modal-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.modal-stat-item {
+  text-align: center; padding: 10px; background: var(--bg-secondary); border-radius: 6px;
+}
+.modal-stat-label {
+  font-size: 10px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.modal-stat-value { font-size: 14px; font-weight: 600; }
+.modal-loading { text-align: center; padding: 40px; color: var(--text-muted); font-size: 13px; }
+.wallet-row-clickable:hover { background: rgba(255,255,255,0.04); }
 </style>
 </head>
 <body>
@@ -1154,7 +1219,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <table class="data-table" id="trades-table">
               <thead>
                 <tr>
-                  <th>Hora</th>
+                  <th>Data/Hora</th>
                   <th>Par</th>
                   <th>Lado</th>
                   <th>Preco</th>
@@ -1265,8 +1330,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <label>Base URL</label>
             <input type="text" id="cfg-aiBaseURL" placeholder="https://api.openai.com/v1">
           </div>
+          <div class="input-group" style="margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="cfg-aiVision" onchange="onAIModelChange()" style="width:16px;height:16px;">
+              Enviar grafico (Vision) - usa mais tokens e e mais lento
+            </label>
+          </div>
           <div id="ai-vision-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(0,200,150,0.1);border:1px solid rgba(0,200,150,0.3);border-radius:6px;font-size:11px;color:var(--text-muted);">
-            &#x1F441; <strong>Modelo com Visao:</strong> Um grafico de candles (800x450) sera gerado automaticamente e enviado junto com os indicadores para analise visual de padroes (tendencias, suportes, resistencias, doji, martelo, etc).
+            &#x1F441; <strong>Vision ativado:</strong> Um grafico de candles (800x450) sera gerado e enviado junto com os indicadores. Usa mais tokens mas permite analise visual de padroes.
           </div>
           <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
             <button class="btn btn-outline" id="btn-test-ai" onclick="doTestAI()">Testar Conexao IA</button>
@@ -1338,11 +1409,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           <div class="input-group">
             <label>Intervalo de Candles</label>
             <select id="cfg-interval">
-              <option value="1m">1 minuto</option>
-              <option value="5m">5 minutos</option>
-              <option value="15m" selected>15 minutos</option>
               <option value="1h">1 hora</option>
-              <option value="4h">4 horas</option>
+              <option value="4h" selected>4 horas (Recomendado)</option>
               <option value="1d">1 dia</option>
             </select>
           </div>
@@ -2668,6 +2736,46 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
     </div>
 
+    <!-- COIN HISTORY MODAL -->
+    <div class="modal-overlay" id="coin-history-modal" onclick="closeCoinHistoryModal(event)">
+      <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <div class="modal-header-left">
+            <span class="modal-symbol" id="modal-symbol">--</span>
+            <span class="modal-price" id="modal-price">--</span>
+            <span class="modal-change" id="modal-change">--</span>
+          </div>
+          <button class="modal-close-btn" onclick="closeCoinHistoryModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-loading" id="modal-loading">Carregando historico...</div>
+          <div id="modal-data" style="display:none;">
+            <div class="modal-tf-btns">
+              <button class="modal-tf-btn active" id="modal-tf-1h" onclick="switchModalTimeframe('1h')">1h</button>
+              <button class="modal-tf-btn" id="modal-tf-24h" onclick="switchModalTimeframe('24h')">24h</button>
+            </div>
+            <div class="modal-chart-wrapper">
+              <canvas id="modal-chart-canvas" style="width:100%;height:200px;display:block;"></canvas>
+            </div>
+            <div class="modal-stats">
+              <div class="modal-stat-item">
+                <div class="modal-stat-label">Alta 24h</div>
+                <div class="modal-stat-value" style="color:var(--green);" id="modal-high">--</div>
+              </div>
+              <div class="modal-stat-item">
+                <div class="modal-stat-label">Baixa 24h</div>
+                <div class="modal-stat-value" style="color:var(--red);" id="modal-low">--</div>
+              </div>
+              <div class="modal-stat-item">
+                <div class="modal-stat-label">Volume 24h</div>
+                <div class="modal-stat-value" id="modal-volume">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2787,6 +2895,7 @@ function handleDelphiMessage(msg) {
     case 'optimizeApplied':   onOptimizeApplied(data); break;
     case 'testAIResult':      onTestAIResult(data); break;
     case 'aiStats':           onAIStats(data); break;
+    case 'coinHistoryData':   onCoinHistoryData(data); break;
     default: break;
   }
 }
@@ -2976,6 +3085,8 @@ function onLoadConfig(data) {
     }
   }
   setInputVal('cfg-aiBaseURL', data.aiBaseURL);
+  var visionChk = document.getElementById('cfg-aiVision');
+  if (visionChk) visionChk.checked = !!data.aiVision;
   onAIModelChange();
   setInputVal('cfg-tradeAmount', data.tradeAmount);
   setInputVal('cfg-stopLoss', data.stopLoss);
@@ -3259,11 +3370,13 @@ function onAIModelChange() {
   var customGrp = document.getElementById('ai-custom-model-group');
   var badge = document.getElementById('ai-vision-badge');
   var info = document.getElementById('ai-vision-info');
+  var visionChk = document.getElementById('cfg-aiVision');
   customGrp.style.display = val === 'custom' ? '' : 'none';
   var modelName = val === 'custom' ? getInputVal('cfg-aiModelCustom') : val;
-  var isVis = isVisionModel(modelName);
-  badge.style.display = isVis ? '' : 'none';
-  info.style.display = isVis ? '' : 'none';
+  var supportsVision = isVisionModel(modelName);
+  var visionEnabled = visionChk && visionChk.checked;
+  badge.style.display = (supportsVision && visionEnabled) ? '' : 'none';
+  info.style.display = visionEnabled ? '' : 'none';
 }
 
 function applyAIPreset(preset) {
@@ -3311,6 +3424,7 @@ function doSaveConfig() {
     testnet: getToggle('cfg-testnet'),
     aiKey: getInputVal('cfg-aiKey'),
     aiModel: getEffectiveAIModel(),
+    aiVision: document.getElementById('cfg-aiVision').checked,
     aiBaseURL: getInputVal('cfg-aiBaseURL'),
     tradeAmount: parseFloat(getInputVal('cfg-tradeAmount')) || 10,
     stopLoss: parseFloat(getInputVal('cfg-stopLoss')) || 2,
@@ -3531,6 +3645,17 @@ function renderBalance() {
 // =====================================================================
 // UI RENDERING: TRADES
 // =====================================================================
+function formatDateTime(date) {
+  if (!date || isNaN(date.getTime())) return '--';
+  var dd = String(date.getDate()).padStart(2, '0');
+  var mm = String(date.getMonth() + 1).padStart(2, '0');
+  var yy = String(date.getFullYear());
+  var h = String(date.getHours()).padStart(2, '0');
+  var m = String(date.getMinutes()).padStart(2, '0');
+  var s = String(date.getSeconds()).padStart(2, '0');
+  return dd + '/' + mm + '/' + yy + ' ' + h + ':' + m + ':' + s;
+}
+
 function renderTrades() {
   var tbody = document.getElementById('trades-tbody');
   if (state.trades.length === 0) {
@@ -3538,12 +3663,17 @@ function renderTrades() {
     return;
   }
 
+  // Ordena por data descendente (mais recente primeiro)
+  var sorted = state.trades.slice().sort(function(a, b) {
+    return parseTradeTimestamp(b.timestamp) - parseTradeTimestamp(a.timestamp);
+  });
+
   var html = '';
-  for (var i = 0; i < state.trades.length; i++) {
-    var t = state.trades[i];
+  for (var i = 0; i < sorted.length; i++) {
+    var t = sorted[i];
     var sideClass = t.side === 'BUY' ? 'positive' : 'negative';
     var sideLabel = t.side === 'BUY' ? 'Compra' : 'Venda';
-    var time = t.timestamp ? formatTime(parseTradeTimestamp(t.timestamp)) : '--';
+    var time = t.timestamp ? formatDateTime(parseTradeTimestamp(t.timestamp)) : '--';
 
     html += '<tr>';
     html += '<td style="font-size:11px;">' + escapeHtml(time) + '</td>';
@@ -4181,8 +4311,14 @@ function onWalletData(data) {
     var valueUSDT = b.valueUSDT || 0;
     var pct = totalUSDT > 0 ? (valueUSDT / totalUSDT * 100) : 0;
 
-    html += '<tr>';
-    html += '<td style="font-weight:600;">' + escapeHtml(b.asset) + '</td>';
+    var isStable = ['USDT','BUSD','USDC','FDUSD'].indexOf(b.asset) >= 0;
+    if (isStable) {
+      html += '<tr>';
+      html += '<td style="font-weight:600;">' + escapeHtml(b.asset) + '</td>';
+    } else {
+      html += '<tr class="wallet-row-clickable" style="cursor:pointer;" onclick="openCoinHistory(\'' + escapeAttr(b.asset) + '\')" title="Ver historico">';
+      html += '<td style="font-weight:600;">' + escapeHtml(b.asset) + ' <span style="font-size:10px;color:var(--text-muted);">&#128200;</span></td>';
+    }
     html += '<td>' + formatNum(b.free) + '</td>';
     html += '<td>' + formatNum(b.locked) + '</td>';
     html += '<td style="font-weight:600;">' + formatNum(total) + '</td>';
@@ -4535,7 +4671,12 @@ function renderPerformance() {
     symTbody.innerHTML = symHtml;
   }
 
-  // Open positions table
+  // Open positions table (mais recentes primeiro)
+  data.openPositions.sort(function(a, b) {
+    var ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    var tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return tb - ta;
+  });
   var openTbody = document.getElementById('perf-open-tbody');
   if (data.openPositions.length === 0) {
     openTbody.innerHTML = '<tr><td colspan="4" class="placeholder-text">Nenhuma posicao aberta.</td></tr>';
@@ -4577,6 +4718,198 @@ function renderPerformance() {
     pairsTbody.innerHTML = pairsHtml;
   }
 }
+
+// =====================================================================
+// COIN HISTORY MODAL
+// =====================================================================
+var coinHistoryState = {
+  symbol: '', asset: '', timeframe: '1h',
+  candles1h: [], candles24h: [], ticker: null
+};
+
+function openCoinHistory(asset) {
+  var symbol = asset + 'USDT';
+  coinHistoryState.symbol = symbol;
+  coinHistoryState.asset = asset;
+  coinHistoryState.timeframe = '1h';
+  coinHistoryState.candles1h = [];
+  coinHistoryState.candles24h = [];
+  coinHistoryState.ticker = null;
+
+  var modal = document.getElementById('coin-history-modal');
+  modal.classList.add('active');
+  document.getElementById('modal-symbol').textContent = formatSymbol(symbol);
+  document.getElementById('modal-price').textContent = '';
+  document.getElementById('modal-change').textContent = '';
+  document.getElementById('modal-loading').style.display = 'block';
+  document.getElementById('modal-loading').textContent = 'Carregando historico...';
+  document.getElementById('modal-data').style.display = 'none';
+  document.getElementById('modal-tf-1h').classList.add('active');
+  document.getElementById('modal-tf-24h').classList.remove('active');
+
+  sendToDelphi('coinHistory', { symbol: symbol });
+}
+
+function closeCoinHistoryModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById('coin-history-modal').classList.remove('active');
+}
+
+function onCoinHistoryData(data) {
+  if (data.error) {
+    document.getElementById('modal-loading').textContent = 'Erro: ' + data.error;
+    return;
+  }
+  if (data.symbol !== coinHistoryState.symbol) return;
+
+  coinHistoryState.candles1h = data.candles1h || [];
+  coinHistoryState.candles24h = data.candles24h || [];
+
+  // Header
+  document.getElementById('modal-price').textContent = formatPrice(data.lastPrice);
+  var changePct = data.priceChangePct || 0;
+  var changeAbs = data.priceChange || 0;
+  var changeEl = document.getElementById('modal-change');
+  var isUp = changePct >= 0;
+  var sign = isUp ? '+' : '';
+  changeEl.textContent = sign + formatPrice(changeAbs) + ' (' + sign + changePct.toFixed(2) + '%)';
+  changeEl.style.color = isUp ? 'var(--green)' : 'var(--red)';
+
+  // Stats
+  document.getElementById('modal-high').textContent = formatPrice(data.highPrice);
+  document.getElementById('modal-low').textContent = formatPrice(data.lowPrice);
+  var vol = data.quoteVolume || 0;
+  document.getElementById('modal-volume').textContent =
+    vol >= 1e6 ? (vol / 1e6).toFixed(2) + 'M' :
+    vol >= 1e3 ? (vol / 1e3).toFixed(1) + 'K' : vol.toFixed(2);
+
+  document.getElementById('modal-loading').style.display = 'none';
+  document.getElementById('modal-data').style.display = 'block';
+  drawModalChart();
+}
+
+function switchModalTimeframe(tf) {
+  coinHistoryState.timeframe = tf;
+  document.getElementById('modal-tf-1h').classList.toggle('active', tf === '1h');
+  document.getElementById('modal-tf-24h').classList.toggle('active', tf === '24h');
+  drawModalChart();
+}
+
+function drawModalChart() {
+  var canvas = document.getElementById('modal-chart-canvas');
+  if (!canvas) return;
+
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  if (rect.width === 0) return;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  var W = rect.width, H = rect.height;
+
+  ctx.fillStyle = '#0b0e11';
+  ctx.fillRect(0, 0, W, H);
+
+  var candles = coinHistoryState.timeframe === '1h'
+    ? coinHistoryState.candles1h : coinHistoryState.candles24h;
+
+  if (!candles || candles.length < 2) {
+    ctx.fillStyle = '#848e9c';
+    ctx.font = '12px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('Sem dados disponiveis', W / 2, H / 2);
+    return;
+  }
+
+  var prices = [], times = [];
+  for (var i = 0; i < candles.length; i++) {
+    prices.push(parseFloat(candles[i].c));
+    times.push(candles[i].t);
+  }
+
+  var minP = Math.min.apply(null, prices);
+  var maxP = Math.max.apply(null, prices);
+  var range = maxP - minP;
+  if (range === 0) range = maxP * 0.01 || 1;
+  minP -= range * 0.08;
+  maxP += range * 0.08;
+
+  var pad = { top: 12, bottom: 20, left: 8, right: 60 };
+  var cW = W - pad.left - pad.right;
+  var cH = H - pad.top - pad.bottom;
+  function xP(idx) { return pad.left + (idx / (prices.length - 1)) * cW; }
+  function yP(val) { return pad.top + cH - ((val - minP) / (maxP - minP)) * cH; }
+
+  var isUp = prices[prices.length - 1] >= prices[0];
+  var lineColor = isUp ? '#0ecb81' : '#f6465d';
+  var fillColor = isUp ? 'rgba(14,203,129,0.12)' : 'rgba(246,70,93,0.12)';
+
+  // Area fill
+  ctx.beginPath();
+  ctx.moveTo(xP(0), yP(prices[0]));
+  for (var i = 1; i < prices.length; i++) ctx.lineTo(xP(i), yP(prices[i]));
+  ctx.lineTo(xP(prices.length - 1), pad.top + cH);
+  ctx.lineTo(xP(0), pad.top + cH);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(xP(0), yP(prices[0]));
+  for (var i = 1; i < prices.length; i++) ctx.lineTo(xP(i), yP(prices[i]));
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Last point dot
+  ctx.beginPath();
+  ctx.arc(xP(prices.length - 1), yP(prices[prices.length - 1]), 3, 0, Math.PI * 2);
+  ctx.fillStyle = lineColor;
+  ctx.fill();
+
+  // Grid lines + price axis (right)
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (var g = 0; g <= 4; g++) {
+    var gy = pad.top + (cH / 4) * g;
+    var gPrice = maxP - ((maxP - minP) / 4) * g;
+    ctx.strokeStyle = 'rgba(43,49,57,0.4)';
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, gy);
+    ctx.lineTo(W - pad.right, gy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#848e9c';
+    ctx.font = '10px Segoe UI';
+    ctx.fillText(formatPriceAxis(gPrice), W - pad.right + 4, gy);
+  }
+
+  // Time axis (bottom)
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#848e9c';
+  ctx.font = '10px Segoe UI';
+  var timeIdxs = [0, Math.floor(prices.length / 4), Math.floor(prices.length / 2),
+                  Math.floor(prices.length * 3 / 4), prices.length - 1];
+  for (var ti = 0; ti < timeIdxs.length; ti++) {
+    var idx = timeIdxs[ti];
+    var dt = new Date(times[idx]);
+    var label = ('0'+dt.getHours()).slice(-2) + ':' + ('0'+dt.getMinutes()).slice(-2);
+    ctx.fillText(label, xP(idx), pad.top + cH + 4);
+  }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('coin-history-modal');
+    if (modal && modal.classList.contains('active')) closeCoinHistoryModal();
+  }
+});
 
 // =====================================================================
 // INITIALIZATION
