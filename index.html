@@ -1354,8 +1354,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <input type="number" id="cfg-tradeAmount" placeholder="10" step="1" min="1">
           </div>
           <div class="input-group">
-            <label>Stop Loss (%)</label>
-            <input type="number" id="cfg-stopLoss" placeholder="2" step="0.1" min="0">
+            <label>Trailing Stop (%)</label>
+            <input type="number" id="cfg-trailingStop" placeholder="3" step="0.1" min="0">
           </div>
           <div class="input-group">
             <label>Take Profit (%)</label>
@@ -1421,9 +1421,56 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             </div>
             <div class="toggle-switch" id="cfg-autoTrade" onclick="toggleConfigSwitch('cfg-autoTrade')"></div>
           </div>
+          <div class="toggle-wrapper">
+            <div>
+              <div style="font-size:13px;font-weight:600;">DCA Automatico</div>
+              <div style="font-size:11px;color:var(--text-muted);">Comprar mais em degraus de queda</div>
+            </div>
+            <div class="toggle-switch" id="cfg-dcaEnabled" onclick="toggleConfigSwitch('cfg-dcaEnabled')"></div>
+          </div>
+          <div class="input-group">
+            <label>Max DCA (compras extras)</label>
+            <input type="number" id="cfg-dcaMax" placeholder="3" step="1" min="1" max="3">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+            <div class="input-group">
+              <label>DCA 1 (%)</label>
+              <input type="number" id="cfg-dcaLevel1" placeholder="3" step="0.5" min="1">
+            </div>
+            <div class="input-group">
+              <label>DCA 2 (%)</label>
+              <input type="number" id="cfg-dcaLevel2" placeholder="5" step="0.5" min="1">
+            </div>
+            <div class="input-group">
+              <label>DCA 3 (%)</label>
+              <input type="number" id="cfg-dcaLevel3" placeholder="8" step="0.5" min="1">
+            </div>
+          </div>
         </div>
 
-        <div></div>
+        <!-- Telegram -->
+        <div class="config-card">
+          <h3>Telegram</h3>
+          <div class="toggle-wrapper">
+            <div>
+              <div style="font-size:13px;font-weight:600;">Notificacoes Telegram</div>
+              <div style="font-size:11px;color:var(--text-muted);">Receber alertas de compra, venda e oportunidades</div>
+            </div>
+            <div class="toggle-switch" id="cfg-telegramEnabled" onclick="toggleConfigSwitch('cfg-telegramEnabled')"></div>
+          </div>
+          <div class="input-group">
+            <label>Bot Token</label>
+            <input type="text" id="cfg-telegramToken" placeholder="123456789:ABCdefGhi..." style="font-family:monospace;font-size:12px;">
+          </div>
+          <div class="input-group">
+            <label>Chat ID</label>
+            <input type="text" id="cfg-telegramChatId" placeholder="123456789" style="font-family:monospace;font-size:12px;">
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn" onclick="doTestTelegram()" style="font-size:12px;padding:6px 14px;">Enviar Teste</button>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Crie um bot no @BotFather e envie /start</span>
+          </div>
+        </div>
       </div>
       <div class="config-actions">
         <button class="btn btn-accent btn-lg" onclick="doSaveConfig()">&#x1F4BE; Salvar Configuracoes</button>
@@ -1543,7 +1590,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin-bottom:20px;">
           <div style="font-size:13px;font-weight:700;color:var(--accent);grid-column:1/-1;margin-bottom:4px;">Trading</div>
           <div class="ga-params-grid" style="grid-column:1/-1;">
-            <div><b>Stop Loss:</b> <span id="ga-param-sl">--</span>%</div>
+            <div><b>Trailing Stop:</b> <span id="ga-param-sl">--</span>%</div>
             <div><b>Take Profit:</b> <span id="ga-param-tp">--</span>%</div>
             <div><b>Min Score:</b> <span id="ga-param-ms">--</span></div>
             <div><b>RSI Oversold:</b> <span id="ga-param-rsi-os">--</span></div>
@@ -1564,7 +1611,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           &#x2705; Aplicar Parametros Otimizados
         </button>
         <p style="font-size:11px;color:var(--text-muted);margin-top:8px;">
-          Aplica Stop Loss, Take Profit e Min Score nas configuracoes do bot.
+          Aplica Trailing Stop, Take Profit e Min Score nas configuracoes do bot.
         </p>
       </div>
     </div>
@@ -1609,6 +1656,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               <span class="help-flow-step">&#x1F916; Analise IA</span>
               <span class="help-flow-arrow">&#x2192;</span>
               <span class="help-flow-step">&#x1F4B0; Trade</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x1F4F1; Alerta Telegram</span>
+            </div>
+            <div class="help-flow" style="margin-top:8px;">
+              <span class="help-flow-step">&#x1F6D1; Trailing Stop</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x1F504; DCA (se preco cai)</span>
+              <span class="help-flow-arrow">&#x2192;</span>
+              <span class="help-flow-step">&#x23F1; Timeout Lateral</span>
             </div>
 
             <table class="help-table" style="margin-top:16px;">
@@ -1619,6 +1675,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               <tr><td><strong>Analise IA</strong></td><td>Envia indicadores para um LLM (GPT, Claude, DeepSeek) que retorna sinal, confianca e precos sugeridos</td></tr>
               <tr><td><strong>Trading Manual</strong></td><td>Compra e venda a mercado com confirmacao</td></tr>
               <tr><td><strong>Bot Automatico</strong></td><td>Escaneia, analisa e executa trades automaticamente em intervalos configuraveis</td></tr>
+              <tr><td><strong>Trailing Stop</strong></td><td>Stop loss dinamico que acompanha o preco maximo, vendendo ao cair X% do pico</td></tr>
+              <tr><td><strong>DCA</strong></td><td>Dollar Cost Averaging: compra mais em degraus de queda (-3%, -5%, -8%) para baixar o preco medio</td></tr>
+              <tr><td><strong>Telegram</strong></td><td>Notificacoes em tempo real no celular via Telegram (compras, vendas, oportunidades)</td></tr>
             </table>
           </div>
         </div>
@@ -1901,7 +1960,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                   <br>1. A moeda caiu bastante (periodo anterior)
                   <br>2. Comecou a se recuperar (variacao +% no periodo selecionado)
                   <br>3. Os indicadores confirmam que a reversao esta acontecendo (RSI baixo + MACD cruzando + Bollinger inferior)
-                  <br>4. O bot compra na confirmacao e coloca stop loss para proteger
+                  <br>4. O bot compra na confirmacao e o trailing stop protege a posicao
                   <br><br>
                   A <strong>estrategia ideal</strong> e: comprar quando os indicadores confirmam a reversao (nao antes), e vender quando RSI fica sobrecomprado (&gt;70).
                 </div>
@@ -1998,14 +2057,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <div class="help-param">
               <div class="help-param-name" style="color:var(--blue);">&#x1F916; Bot Automatico</div>
               <div class="help-param-desc">
-                O bot opera no seguinte ciclo automatico:
-                <br><br><strong>1.</strong> Escaneia o mercado (top N recovery)
-                <br><strong>2.</strong> Seleciona a moeda com melhor recuperacao (ou a que ja esta selecionada)
-                <br><strong>3.</strong> Calcula indicadores tecnicos
-                <br><strong>4.</strong> Envia para a IA analisar (ou usa score tecnico como fallback)
-                <br><strong>5.</strong> Se o sinal for de COMPRA ou VENDA e a confianca for &ge; minimo configurado:
+                O bot opera no seguinte ciclo automatico (a cada intervalo configurado):
+                <br><br><strong>1.</strong> Verifica <strong>Trailing Stop</strong> em todas as posicoes abertas (urgente)
+                <br><strong>2.</strong> Verifica <strong>DCA</strong> &mdash; compra mais se preco caiu nos degraus configurados
+                <br><strong>3.</strong> Verifica <strong>Timeout Lateral</strong> &mdash; vende se posicao esta parada ha muito tempo
+                <br><strong>4.</strong> Escaneia o mercado (top N moedas)
+                <br><strong>5.</strong> Analisa TODAS as top coins: indicadores tecnicos + IA
+                <br><strong>6.</strong> Se o sinal for COMPRA/VENDA e confianca &ge; minimo:
                 <br>&nbsp;&nbsp;&nbsp;&nbsp;&#x2192; Executa a ordem automaticamente (se Auto-Trade estiver ativo)
-                <br><strong>6.</strong> Aguarda o intervalo configurado e repete
+                <br><strong>7.</strong> Envia <strong>notificacao Telegram</strong> (se configurado)
+                <br><strong>8.</strong> Aguarda o intervalo configurado e repete
               </div>
             </div>
 
@@ -2127,15 +2188,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             </div>
 
             <div class="help-param">
-              <div class="help-param-name">Stop Loss (%) <span class="badge danger">Risco</span></div>
+              <div class="help-param-name">Trailing Stop (%) <span class="badge danger">Risco</span></div>
               <div class="help-param-desc">
-                Percentual maximo de perda aceito antes de sugerir saida da posicao.
-                <br><strong>Padrao:</strong> 2%
-                <br><strong>Calculo:</strong> Preco de entrada x (1 - StopLoss/100)
-                <br><strong>Exemplo:</strong> Entrada em $100 com SL 2% = Stop Loss em $98
-                <br><br>&#x2022; Valores menores (1-2%): Mais conservador, para menos do que o devido
-                <br>&#x2022; Valores maiores (3-5%): Mais espaco para o ativo respirar, mas maior risco
-                <br><br><strong>Dica:</strong> O ATR pode ajudar a calibrar &mdash; idealmente o SL deve ser 1.5x a 2x o ATR.
+                Percentual de queda a partir do preco maximo atingido (pico) que aciona a venda automatica. Diferente do stop fixo, o trailing stop "sobe" junto com o preco.
+                <br><strong>Padrao:</strong> 3%
+                <br><strong>Calculo:</strong> Vende quando: (Pico - Atual) / Pico >= TrailingStop%
+                <br><strong>Exemplo:</strong> Compra em $100, preco sobe ate $120 (pico), trailing 3% = vende se cair para $116.40
+                <br><br>&#x2022; Valores menores (1-2%): Protege lucro rapido, mas pode sair cedo
+                <br>&#x2022; Valores maiores (3-5%): Mais espaco para respirar, captura movimentos maiores
+                <br><br><strong>Vantagem:</strong> Se o preco subir 10% e depois cair, voce protege a maior parte do lucro em vez de esperar voltar ao preco de compra.
               </div>
             </div>
 
@@ -2147,7 +2208,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 <br><strong>Calculo:</strong> Preco de entrada x (1 + TakeProfit/100)
                 <br><strong>Exemplo:</strong> Entrada em $100 com TP 4% = Take Profit em $104
                 <br><br><strong>Regra de ouro:</strong> Mantenha uma relacao <strong>Risco:Retorno de pelo menos 1:2</strong>.
-                <br>Se seu Stop Loss e 2%, o Take Profit deve ser pelo menos 4%.
+                <br>Se seu Trailing Stop e 2%, o Take Profit deve ser pelo menos 4%.
               </div>
             </div>
 
@@ -2194,13 +2255,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
                 Periodo de tempo de cada candle no grafico e nos calculos de indicadores.
                 <table class="help-table">
                   <tr><th>Valor</th><th>Uso recomendado</th></tr>
-                  <tr><td><strong>1m, 5m</strong></td><td>Scalping &mdash; operacoes rapidas de minutos</td></tr>
-                  <tr><td><strong>15m</strong></td><td>Day trading intradiario (padrao)</td></tr>
-                  <tr><td><strong>1h</strong></td><td>Day trading / Swing trading</td></tr>
-                  <tr><td><strong>4h</strong></td><td>Swing trading &mdash; operacoes de dias</td></tr>
-                  <tr><td><strong>1d</strong></td><td>Position trading &mdash; operacoes de semanas</td></tr>
+                  <tr><td><strong>1h</strong></td><td>Day trading / Swing trading &mdash; mais sinais, reage rapido</td></tr>
+                  <tr><td><strong>4h (padrao)</strong></td><td>Swing trading &mdash; equilibrio entre sinais e confiabilidade</td></tr>
+                  <tr><td><strong>1d</strong></td><td>Position trading &mdash; sinais mais confiaveis, operacoes de dias/semanas</td></tr>
                 </table>
-                <br><strong>Dica:</strong> Intervalos maiores geram sinais mais confiaveis mas menos frequentes.
+                <br><strong>Dica:</strong> Intervalos maiores geram sinais mais confiaveis mas menos frequentes. O padrao de 4h e o melhor equilibrio para a maioria dos cenarios.
               </div>
             </div>
 
@@ -2401,6 +2460,182 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           </div>
         </div>
 
+        <!-- ===== TRAILING STOP ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F6D1; Trailing Stop Loss
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p><strong>O que e?</strong> Diferente do stop loss fixo (que vende num preco predefinido), o <strong>trailing stop</strong> "sobe" junto com o preco. Ele rastreia o <strong>preco maximo atingido</strong> (pico) e vende apenas quando o preco cai um percentual a partir desse pico.</p>
+
+            <div class="help-tip">&#x1F4A1; O trailing stop protege lucros ja conquistados. Se o preco subir 10% e depois cair, voce vende perto do topo ao inves de esperar cair ate o preco de compra.</div>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Como funciona:</p>
+            <table class="help-table">
+              <tr><th>Passo</th><th>O que acontece</th></tr>
+              <tr><td><strong>1. Compra</strong></td><td>Bot compra ETH a $2000. Pico = $2000.</td></tr>
+              <tr><td><strong>2. Sobe</strong></td><td>Preco sobe para $2200. Pico atualiza para $2200.</td></tr>
+              <tr><td><strong>3. Sobe mais</strong></td><td>Preco sobe para $2500. Pico atualiza para $2500.</td></tr>
+              <tr><td><strong>4. Cai</strong></td><td>Preco cai para $2450. Queda = 2% do pico. Trailing 3%? Nao acionou. Aguarda.</td></tr>
+              <tr><td><strong>5. Cai mais</strong></td><td>Preco cai para $2425. Queda = 3% do pico ($2500). <strong style="color:var(--red);">TRAILING STOP ACIONADO!</strong> Vende a $2425.</td></tr>
+            </table>
+            <p style="margin-top:8px;">Resultado: Comprou a $2000, vendeu a $2425. <strong style="color:var(--green);">Lucro: +$425 (+21.25%)</strong>. Sem trailing stop, poderia ter esperado cair mais.</p>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Parametros:</p>
+            <table class="help-table">
+              <tr><th>Parametro</th><th>Padrao</th><th>Descricao</th></tr>
+              <tr><td><strong>Trailing Stop (%)</strong></td><td>3%</td><td>Percentual de queda a partir do pico que aciona a venda</td></tr>
+              <tr><td><strong>Delay</strong></td><td>5 min</td><td>Nao aciona nos primeiros 5 minutos apos a compra (evita volatilidade inicial)</td></tr>
+            </table>
+
+            <p style="margin-top:12px;font-weight:600;">Recomendacoes de valor:</p>
+            <table class="help-table">
+              <tr><th>Valor</th><th>Perfil</th><th>Uso</th></tr>
+              <tr><td>1-2%</td><td>Conservador</td><td>Protege lucro rapido, mas pode sair cedo em movimentos volateis</td></tr>
+              <tr><td>3% (padrao)</td><td>Moderado</td><td>Equilibrio entre protecao e espaco para respirar</td></tr>
+              <tr><td>4-5%</td><td>Agressivo</td><td>Mais espaco, captura movimentos maiores, mas devolve mais lucro na queda</td></tr>
+            </table>
+
+            <div class="help-param" style="margin-top:14px;">
+              <div class="help-param-name">Persistencia</div>
+              <div class="help-param-desc">O preco maximo (pico) de cada posicao e <strong>salvo no banco de dados</strong>. Se voce fechar e reabrir o programa, o pico nao se perde. O bot continua rastreando de onde parou.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Interacao com DCA</div>
+              <div class="help-param-desc">Quando ha multiplas posicoes de DCA no mesmo symbol, o trailing stop usa o <strong>preco medio ponderado</strong> de todas as posicoes e o <strong>pico global</strong> (maior pico entre todas as posicoes). Ao acionar, vende <strong>tudo</strong> de uma vez.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== DCA ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F504; DCA (Dollar Cost Averaging)
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p><strong>O que e?</strong> Quando o preco cai apos a compra, o bot compra mais em <strong>degraus de queda</strong> para baixar o preco medio de entrada. Isso aumenta a chance de recuperar o investimento quando o preco voltar a subir.</p>
+
+            <div class="help-tip">&#x1F4A1; DCA transforma uma posicao perdedora em uma posicao que precisa subir <strong>menos</strong> para dar lucro. O preco medio cai a cada compra adicional.</div>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Exemplo pratico:</p>
+            <table class="help-table">
+              <tr><th>Evento</th><th>Preco ETH</th><th>Queda</th><th>Acao</th><th>Investido</th><th>Preco Medio</th></tr>
+              <tr><td>Compra inicial</td><td>$2000</td><td>--</td><td>Compra $100</td><td>$100</td><td>$2000</td></tr>
+              <tr><td>DCA #1</td><td>$1940</td><td>-3%</td><td>Compra $100</td><td>$200</td><td>$1970</td></tr>
+              <tr><td>DCA #2</td><td>$1900</td><td>-5%</td><td>Compra $100</td><td>$300</td><td>$1947</td></tr>
+              <tr><td>DCA #3</td><td>$1840</td><td>-8%</td><td>Compra $100</td><td>$400</td><td>$1920</td></tr>
+            </table>
+            <p style="margin-top:8px;">Sem DCA: precisaria subir ate $2000 para breakeven. Com DCA: breakeven em <strong>$1920</strong> (-4% mais facil).</p>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Parametros:</p>
+            <table class="help-table">
+              <tr><th>Parametro</th><th>Padrao</th><th>Descricao</th></tr>
+              <tr><td><strong>DCA Automatico</strong></td><td>Desativado</td><td>Toggle para habilitar/desabilitar o DCA</td></tr>
+              <tr><td><strong>Max DCA</strong></td><td>3</td><td>Numero maximo de compras extras (1-3)</td></tr>
+              <tr><td><strong>DCA 1 (%)</strong></td><td>3%</td><td>Queda do preco de entrada para acionar a 1a compra extra</td></tr>
+              <tr><td><strong>DCA 2 (%)</strong></td><td>5%</td><td>Queda para acionar a 2a compra extra</td></tr>
+              <tr><td><strong>DCA 3 (%)</strong></td><td>8%</td><td>Queda para acionar a 3a compra extra</td></tr>
+            </table>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Comportamento:</p>
+            <div class="help-param">
+              <div class="help-param-name">Referencia de queda</div>
+              <div class="help-param-desc">Os percentuais de queda sao calculados a partir do <strong>preco da primeira compra</strong> (entry original), nao do preco atual. Isso garante niveis fixos e previsiveis.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Valor de cada DCA</div>
+              <div class="help-param-desc">Cada compra DCA usa o mesmo <strong>Valor por Trade</strong> configurado. Se o trade amount e $100, cada DCA tambem sera de $100.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Cooldown</div>
+              <div class="help-param-desc">Ha um cooldown de <strong>5 minutos</strong> entre cada DCA do mesmo symbol, e apenas <strong>1 DCA por ciclo do bot</strong> e executado (evita compras simultaneas).</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Verificacao de saldo</div>
+              <div class="help-param-desc">Antes de cada DCA, o bot verifica se ha saldo USDT suficiente. Se o saldo for menor que o valor do trade, o DCA nao e executado.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Venda total</div>
+              <div class="help-param-desc">Quando ocorre venda (trailing stop, take profit, IA ou lateral), o bot vende <strong>todas as posicoes</strong> do symbol de uma vez &mdash; nao vende parcialmente.</div>
+            </div>
+
+            <div class="help-warning">&#x26A0; <strong>Risco:</strong> DCA aumenta a exposicao ao ativo. Se a moeda continuar caindo alem dos niveis de DCA, o prejuizo sera maior. Use em conjunto com trailing stop para limitar perdas.</div>
+          </div>
+        </div>
+
+        <!-- ===== TELEGRAM ===== -->
+        <div class="help-section">
+          <div class="help-section-header" onclick="toggleHelpSection(this)">
+            &#x1F4F1; Notificacoes Telegram
+            <span class="chevron">&#x25BC;</span>
+          </div>
+          <div class="help-section-body">
+            <p>Receba alertas no celular em tempo real quando o bot executa acoes importantes. As notificacoes sao enviadas via <strong>Telegram Bot API</strong>.</p>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Eventos notificados:</p>
+            <table class="help-table">
+              <tr><th>Evento</th><th>Icone</th><th>Quando</th></tr>
+              <tr><td><strong>Compra executada</strong></td><td style="color:var(--green);">&#x1F7E2;</td><td>Bot compra uma moeda (manual, auto-trade ou DCA)</td></tr>
+              <tr><td><strong>Venda executada</strong></td><td style="color:var(--red);">&#x1F534;</td><td>Bot vende uma moeda (manual, auto-trade, trailing stop ou take profit)</td></tr>
+              <tr><td><strong>Trailing Stop</strong></td><td>&#x26A0;</td><td>Trailing stop acionado &mdash; preco caiu X% do pico</td></tr>
+              <tr><td><strong>Take Profit</strong></td><td>&#x1F4B0;</td><td>Take profit atingido &mdash; lucro alvo alcancado</td></tr>
+              <tr><td><strong>DCA</strong></td><td>&#x1F504;</td><td>Compra DCA executada em degrau de queda</td></tr>
+              <tr><td><strong>Oportunidade</strong></td><td>&#x1F50D;</td><td>Sinal COMPRA FORTE detectado com confianca acima do minimo</td></tr>
+            </table>
+
+            <p style="margin-top:14px;font-weight:600;color:var(--accent);">Como configurar:</p>
+            <div class="help-param">
+              <div class="help-param-name">Passo 1: Criar o Bot no Telegram</div>
+              <div class="help-param-desc">
+                1. Abra o Telegram e procure <strong>@BotFather</strong><br>
+                2. Envie o comando <code>/newbot</code><br>
+                3. Escolha um nome e um username para o bot<br>
+                4. O BotFather vai retornar um <strong>Token</strong> no formato: <code>123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code><br>
+                5. Copie esse token e cole no campo <strong>"Bot Token"</strong> nas Configuracoes
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Passo 2: Obter seu Chat ID</div>
+              <div class="help-param-desc">
+                1. Abra o Telegram e procure o bot que voce acabou de criar pelo username<br>
+                2. Envie <code>/start</code> para o bot (obrigatorio, senao o bot nao consegue enviar mensagens)<br>
+                3. Acesse no navegador: <code>https://api.telegram.org/bot&lt;SEU_TOKEN&gt;/getUpdates</code><br>
+                4. Procure o campo <code>"chat":{"id":123456789}</code> &mdash; esse numero e seu <strong>Chat ID</strong><br>
+                5. Cole o Chat ID no campo correspondente nas Configuracoes
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Passo 3: Testar</div>
+              <div class="help-param-desc">
+                Ative o toggle <strong>"Notificacoes Telegram"</strong>, preencha Token e Chat ID, e clique <strong>"Enviar Teste"</strong>. Se tudo estiver correto, voce recebera uma mensagem de confirmacao no Telegram.
+              </div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">Parametros</div>
+              <div class="help-param-desc">
+                <table class="help-table">
+                  <tr><th>Campo</th><th>Descricao</th></tr>
+                  <tr><td><strong>Notificacoes Telegram</strong></td><td>Toggle para habilitar/desabilitar (padrao: desativado)</td></tr>
+                  <tr><td><strong>Bot Token</strong></td><td>Token do bot fornecido pelo @BotFather</td></tr>
+                  <tr><td><strong>Chat ID</strong></td><td>ID numerico do chat/usuario que recebera as mensagens</td></tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="help-tip">&#x1F4A1; Voce tambem pode usar um <strong>grupo do Telegram</strong>: adicione o bot ao grupo, envie uma mensagem, e use o Chat ID do grupo (que sera um numero negativo, ex: <code>-1001234567890</code>).</div>
+          </div>
+        </div>
+
         <!-- ===== ABA LOG ===== -->
         <div class="help-section">
           <div class="help-section-header" onclick="toggleHelpSection(this)">
@@ -2416,6 +2651,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               <tr><td><strong>IA</strong></td><td style="color:var(--purple);">Roxo</td><td>Comunicacao com a API de IA (envio, resposta, erros)</td></tr>
               <tr><td><strong>BOT</strong></td><td style="color:var(--blue);">Azul</td><td>Acoes do bot (scan, analise, sinais, decisoes)</td></tr>
               <tr><td><strong>TRADE</strong></td><td style="color:var(--green);">Verde</td><td>Execucao de ordens (compra, venda, confirmacao)</td></tr>
+              <tr><td><strong>TRAILINGSTOP</strong></td><td style="color:var(--red);">Vermelho</td><td>Trailing stop acionado (preco caiu X% do pico)</td></tr>
+              <tr><td><strong>TAKEPROFIT</strong></td><td style="color:var(--green);">Verde</td><td>Take profit atingido (lucro alvo alcancado)</td></tr>
+              <tr><td><strong>DCA</strong></td><td style="color:var(--blue);">Azul</td><td>Compra DCA executada em degrau de queda</td></tr>
+              <tr><td><strong>POSICAO</strong></td><td style="color:var(--text-primary);">Branco</td><td>Abertura/fechamento de posicoes</td></tr>
+              <tr><td><strong>TELEGRAM</strong></td><td style="color:var(--accent);">Amarelo</td><td>Status de envio de notificacoes Telegram</td></tr>
+              <tr><td><strong>CARTEIRA</strong></td><td style="color:var(--text-primary);">Branco</td><td>Snapshots e atualizacoes da carteira</td></tr>
               <tr><td><strong>ERRO</strong></td><td style="color:var(--red);">Vermelho</td><td>Erros e falhas (conexao, API, validacao)</td></tr>
               <tr><td><strong>SCANNER</strong></td><td style="color:var(--text-muted);">Cinza</td><td>Progresso do scanner de mercado</td></tr>
               <tr><td><strong>SISTEMA</strong></td><td style="color:var(--text-muted);">Cinza</td><td>Eventos do sistema (inicio, config, interface)</td></tr>
@@ -2497,7 +2738,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <div class="help-param">
               <div class="help-param-name">Posicoes Abertas</div>
               <div class="help-param-desc">
-                Lista de compras que ainda nao foram vendidas. Mostra o par, preco de entrada, quantidade e valor estimado atual. As posicoes abertas sao <strong>persistidas no banco de dados</strong> e sobrevivem ao reiniciar o programa.
+                Lista de compras que ainda nao foram vendidas. Mostra o par, preco de entrada, quantidade, valor estimado atual e preco pico (para trailing stop). As posicoes abertas sao <strong>persistidas no banco de dados</strong> e sobrevivem ao reiniciar o programa.
+                <br>Quando DCA esta ativo, um mesmo symbol pode ter <strong>multiplas posicoes</strong> (compra original + DCAs). A tabela mostra cada posicao individualmente, e o trailing stop/take profit usa o preco medio ponderado de todas.
               </div>
             </div>
 
@@ -2600,6 +2842,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <div class="help-param">
               <div class="help-param-name">7. Verifique o Log</div>
               <div class="help-param-desc">Se algo nao funcionar como esperado, a aba Log tem todas as informacoes necessarias para diagnosticar o problema.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">8. Configure o Telegram</div>
+              <div class="help-param-desc">Ative as notificacoes Telegram para monitorar o bot pelo celular. Voce recebe alertas de compras, vendas, trailing stops, DCA e oportunidades sem precisar ficar olhando a tela.</div>
+            </div>
+
+            <div class="help-param">
+              <div class="help-param-name">9. Use DCA com moderacao</div>
+              <div class="help-param-desc">DCA ajuda a baixar o preco medio, mas aumenta a exposicao. Configure niveis conservadores (-3%, -5%, -8%) e mantenha o trailing stop ativo para limitar perdas totais. Nunca invista mais do que pode perder.</div>
             </div>
 
             <div class="help-warning">&#x26A0; <strong>AVISO LEGAL:</strong> Este software e fornecido "como esta", sem garantias. Trading de criptomoedas envolve risco significativo de perda financeira. Voce e o unico responsavel pelas suas decisoes de investimento. Performance passada nao garante resultados futuros.</div>
@@ -3089,7 +3341,7 @@ function onLoadConfig(data) {
   if (visionChk) visionChk.checked = !!data.aiVision;
   onAIModelChange();
   setInputVal('cfg-tradeAmount', data.tradeAmount);
-  setInputVal('cfg-stopLoss', data.stopLoss);
+  setInputVal('cfg-trailingStop', data.trailingStop);
   setInputVal('cfg-takeProfit', data.takeProfit);
   setInputVal('cfg-minConfidence', data.minConfidence);
   setInputVal('cfg-minScore', data.minScore);
@@ -3100,6 +3352,14 @@ function onLoadConfig(data) {
   setInputVal('cfg-tradeCooldown', data.tradeCooldown);
   setInputVal('cfg-snapshotInterval', data.snapshotInterval);
   setToggle('cfg-autoTrade', data.autoTrade);
+  setToggle('cfg-dcaEnabled', data.dcaEnabled);
+  setInputVal('cfg-dcaMax', data.dcaMax);
+  setInputVal('cfg-dcaLevel1', data.dcaLevel1);
+  setInputVal('cfg-dcaLevel2', data.dcaLevel2);
+  setInputVal('cfg-dcaLevel3', data.dcaLevel3);
+  setToggle('cfg-telegramEnabled', data.telegramEnabled);
+  setInputVal('cfg-telegramToken', data.telegramToken);
+  setInputVal('cfg-telegramChatId', data.telegramChatId);
   setInputVal('cfg-interval', data.interval);
   // Scan mode
   var selMode = document.getElementById('cfg-scanMode');
@@ -3300,10 +3560,10 @@ function doApplyOptimizedParams() {
 }
 
 function onOptimizeApplied(data) {
-  var slEl = document.getElementById('cfg-stopLoss');
+  var slEl = document.getElementById('cfg-trailingStop');
   var tpEl = document.getElementById('cfg-takeProfit');
   var msEl = document.getElementById('cfg-minScore');
-  if (slEl) slEl.value = data.stopLoss || '';
+  if (slEl) slEl.value = data.trailingStop || '';
   if (tpEl) tpEl.value = data.takeProfit || '';
   if (msEl) msEl.value = data.minScore || '';
   document.getElementById('ga-status').textContent = 'Parametros aplicados!';
@@ -3427,7 +3687,7 @@ function doSaveConfig() {
     aiVision: document.getElementById('cfg-aiVision').checked,
     aiBaseURL: getInputVal('cfg-aiBaseURL'),
     tradeAmount: parseFloat(getInputVal('cfg-tradeAmount')) || 10,
-    stopLoss: parseFloat(getInputVal('cfg-stopLoss')) || 2,
+    trailingStop: parseFloat(getInputVal('cfg-trailingStop')) || 3,
     takeProfit: parseFloat(getInputVal('cfg-takeProfit')) || 3,
     minConfidence: parseFloat(getInputVal('cfg-minConfidence')) || 70,
     minScore: parseInt(getInputVal('cfg-minScore'), 10) || 25,
@@ -3439,12 +3699,25 @@ function doSaveConfig() {
     tradeCooldown: parseInt(getInputVal('cfg-tradeCooldown'), 10) || 30,
     snapshotInterval: parseInt(getInputVal('cfg-snapshotInterval'), 10) || 30,
     autoTrade: getToggle('cfg-autoTrade'),
-    interval: getInputVal('cfg-interval')
+    interval: getInputVal('cfg-interval'),
+    dcaEnabled: getToggle('cfg-dcaEnabled'),
+    dcaMax: parseInt(getInputVal('cfg-dcaMax'), 10) || 3,
+    dcaLevel1: parseFloat(getInputVal('cfg-dcaLevel1')) || 3,
+    dcaLevel2: parseFloat(getInputVal('cfg-dcaLevel2')) || 5,
+    dcaLevel3: parseFloat(getInputVal('cfg-dcaLevel3')) || 8,
+    telegramEnabled: getToggle('cfg-telegramEnabled'),
+    telegramToken: getInputVal('cfg-telegramToken'),
+    telegramChatId: getInputVal('cfg-telegramChatId')
   };
   state.scanMode = cfg.scanMode;
   state.recoveryHours = cfg.recoveryHours;
   updateScanModeUI();
   sendToDelphi('saveConfig', cfg);
+}
+
+function doTestTelegram() {
+  doSaveConfig();
+  setTimeout(function() { sendToDelphi('testTelegram', {}); }, 500);
 }
 
 function toggleAutoTrade() {

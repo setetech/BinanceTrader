@@ -58,6 +58,7 @@ type
     BuyPrice: Double;
     BuyTime: TDateTime;
     Quantity: Double;
+    HighestPrice: Double;
   end;
 
   TCoinRecovery = record

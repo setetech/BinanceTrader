@@ -23,9 +23,11 @@ type
     function GetTradedSymbols: TArray<string>;
     // Posicoes abertas
     procedure SavePosition(const Symbol: string; BuyPrice: Double;
-      BuyTime: TDateTime; Quantity: Double);
+      BuyTime: TDateTime; Quantity: Double; HighestPrice: Double = 0);
     procedure DeletePosition(const Symbol: string);
+    procedure DeleteAllPositions(const Symbol: string);
     function LoadPositions: TList<TOpenPosition>;
+    procedure UpdatePositionHighPrice(const Symbol: string; HighPrice: Double);
     // Wallet snapshots
     procedure SaveWalletSnapshot(TotalUSDT: Double; Timestamp: TDateTime);
     function LoadWalletSnapshots(MaxRecords: Integer = 500): TJSONArray;
@@ -85,9 +87,18 @@ begin
       '  symbol TEXT NOT NULL,' +
       '  buy_price REAL NOT NULL,' +
       '  buy_time TEXT NOT NULL,' +
-      '  quantity REAL NOT NULL' +
+      '  quantity REAL NOT NULL,' +
+      '  high_price REAL NOT NULL DEFAULT 0' +
       ')';
     Q.Execute;
+
+    // Migra bancos antigos que nao tem a coluna high_price
+    try
+      Q.SQL.Text := 'ALTER TABLE open_positions ADD COLUMN high_price REAL NOT NULL DEFAULT 0';
+      Q.Execute;
+    except
+      // Coluna ja existe - ignora
+    end;
 
     Q.SQL.Text :=
       'CREATE TABLE IF NOT EXISTS wallet_snapshots (' +
@@ -183,20 +194,22 @@ begin
 end;
 
 procedure TDatabase.SavePosition(const Symbol: string; BuyPrice: Double;
-  BuyTime: TDateTime; Quantity: Double);
+  BuyTime: TDateTime; Quantity: Double; HighestPrice: Double);
 var
   Q: TUniQuery;
 begin
+  if HighestPrice <= 0 then HighestPrice := BuyPrice;
   Q := TUniQuery.Create(nil);
   try
     Q.Connection := FConn;
     Q.SQL.Text :=
-      'INSERT INTO open_positions (symbol, buy_price, buy_time, quantity) ' +
-      'VALUES (:sym, :price, :btime, :qty)';
+      'INSERT INTO open_positions (symbol, buy_price, buy_time, quantity, high_price) ' +
+      'VALUES (:sym, :price, :btime, :qty, :hprice)';
     Q.ParamByName('sym').AsString := Symbol;
     Q.ParamByName('price').AsFloat := BuyPrice;
     Q.ParamByName('btime').AsString := FormatDateTime('yyyy-mm-dd hh:nn:ss', BuyTime);
     Q.ParamByName('qty').AsFloat := Quantity;
+    Q.ParamByName('hprice').AsFloat := HighestPrice;
     Q.Execute;
   finally
     Q.Free;
@@ -222,6 +235,21 @@ begin
   end;
 end;
 
+procedure TDatabase.DeleteAllPositions(const Symbol: string);
+var
+  Q: TUniQuery;
+begin
+  Q := TUniQuery.Create(nil);
+  try
+    Q.Connection := FConn;
+    Q.SQL.Text := 'DELETE FROM open_positions WHERE symbol = :sym';
+    Q.ParamByName('sym').AsString := Symbol;
+    Q.Execute;
+  finally
+    Q.Free;
+  end;
+end;
+
 function TDatabase.LoadPositions: TList<TOpenPosition>;
 var
   Q: TUniQuery;
@@ -239,9 +267,28 @@ begin
       Pos.BuyPrice := Q.FieldByName('buy_price').AsFloat;
       Pos.BuyTime := StrToDateTimeDef(Q.FieldByName('buy_time').AsString, Now);
       Pos.Quantity := Q.FieldByName('quantity').AsFloat;
+      Pos.HighestPrice := Q.FieldByName('high_price').AsFloat;
+      if Pos.HighestPrice <= 0 then Pos.HighestPrice := Pos.BuyPrice;
       Result.Add(Pos);
       Q.Next;
     end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TDatabase.UpdatePositionHighPrice(const Symbol: string; HighPrice: Double);
+var
+  Q: TUniQuery;
+begin
+  Q := TUniQuery.Create(nil);
+  try
+    Q.Connection := FConn;
+    Q.SQL.Text :=
+      'UPDATE open_positions SET high_price = :hp WHERE symbol = :sym AND high_price < :hp';
+    Q.ParamByName('hp').AsFloat := HighPrice;
+    Q.ParamByName('sym').AsString := Symbol;
+    Q.Execute;
   finally
     Q.Free;
   end;

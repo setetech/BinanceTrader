@@ -83,6 +83,7 @@ type
     procedure DoRefreshWallet;
     procedure CheckLateralPositions;
     procedure CheckStopLossTakeProfit;
+    procedure CheckDCA;
     procedure DoBotAnalyzeAll;
     procedure DoTestAI(Data: TJSONObject);
     procedure DoOptimize;
@@ -98,6 +99,9 @@ type
     procedure SendCandles;
     procedure SendIndicators;
     procedure SendSignal;
+
+    // Telegram
+    procedure SendTelegram(const Msg: string);
 
     // Log
     procedure AddLog(const Tag, Msg: string);
@@ -500,6 +504,45 @@ begin
   begin
     if Data <> nil then
       DoCoinHistory(Data.GetValue<string>('symbol', ''));
+  end
+  else if Action = 'testTelegram' then
+  begin
+    // Forca envio mesmo se desabilitado (para testar token/chatId)
+    var LTgToken := GetCfgStr('telegramToken', '');
+    var LTgChat := GetCfgStr('telegramChatId', '');
+    if (LTgToken = '') or (LTgChat = '') then
+      AddLog('Telegram', 'Preencha o Token e Chat ID antes de testar!')
+    else begin
+      TThread.CreateAnonymousThread(procedure
+      var Http: THTTPClient; Body: TStringStream; JB: TJSONObject;
+      begin
+        Http := THTTPClient.Create;
+        try
+          Http.ConnectionTimeout := 5000;
+          Http.ResponseTimeout := 10000;
+          JB := TJSONObject.Create;
+          try
+            JB.AddPair('chat_id', LTgChat);
+            JB.AddPair('text', '&#x2705; <b>Teste OK!</b>'#10'Bot Binance conectado ao Telegram.');
+            JB.AddPair('parse_mode', 'HTML');
+            Body := TStringStream.Create(JB.ToJSON, TEncoding.UTF8);
+            try
+              Http.Post(
+                'https://api.telegram.org/bot' + LTgToken + '/sendMessage',
+                Body, nil,
+                [TNetHeader.Create('Content-Type', 'application/json')]);
+            finally
+              Body.Free;
+            end;
+          finally
+            JB.Free;
+          end;
+        finally
+          Http.Free;
+        end;
+        TThread.Queue(nil, procedure begin AddLog('Telegram', 'Mensagem de teste enviada!'); end);
+      end).Start;
+    end;
   end;
 end;
 
@@ -529,7 +572,7 @@ begin
   LCfg.AddPair('aiVision',     TJSONBool.Create(GetCfgBool('aiVision', False)));
   LCfg.AddPair('aiBaseURL',    GetCfgStr('aiBaseURL', ''));
   LCfg.AddPair('tradeAmount',  GetCfgStr('tradeAmount', '100'));
-  LCfg.AddPair('stopLoss',     GetCfgStr('stopLoss', '2.0'));
+  LCfg.AddPair('trailingStop',  GetCfgStr('trailingStop', '3.0'));
   LCfg.AddPair('takeProfit',   GetCfgStr('takeProfit', '4.0'));
   LCfg.AddPair('minConfidence',GetCfgStr('minConfidence', '70'));
   LCfg.AddPair('minScore',    GetCfgStr('minScore', '25'));
@@ -540,8 +583,16 @@ begin
   LCfg.AddPair('scanMode',      GetCfgStr('scanMode', 'recovery'));
   LCfg.AddPair('recoveryHours', GetCfgStr('recoveryHours', '24'));
   LCfg.AddPair('lateralTimeout', GetCfgStr('lateralTimeout', '24'));
+  LCfg.AddPair('dcaEnabled',   TJSONBool.Create(GetCfgBool('dcaEnabled', False)));
+  LCfg.AddPair('dcaMax',       GetCfgStr('dcaMax', '3'));
+  LCfg.AddPair('dcaLevel1',    GetCfgStr('dcaLevel1', '3'));
+  LCfg.AddPair('dcaLevel2',    GetCfgStr('dcaLevel2', '5'));
+  LCfg.AddPair('dcaLevel3',    GetCfgStr('dcaLevel3', '8'));
   LCfg.AddPair('tradeCooldown', GetCfgStr('tradeCooldown', '30'));
   LCfg.AddPair('snapshotInterval', GetCfgStr('snapshotInterval', '30'));
+  LCfg.AddPair('telegramEnabled', TJSONBool.Create(GetCfgBool('telegramEnabled', False)));
+  LCfg.AddPair('telegramToken',   GetCfgStr('telegramToken', ''));
+  LCfg.AddPair('telegramChatId',  GetCfgStr('telegramChatId', ''));
   SendToJS('loadConfig', LCfg);
 
   // Carregar trades persistidos do banco
@@ -1222,7 +1273,7 @@ begin
         LAnalysis.Reasoning := LBreakdown;
         LAnalysis.Timestamp := Now;
         LAnalysis.SuggestedEntry := LIndicators.CurrentPrice;
-        LAnalysis.SuggestedStopLoss := LIndicators.CurrentPrice * (1 - GetCfgDbl('stopLoss', 2) / 100);
+        LAnalysis.SuggestedStopLoss := LIndicators.CurrentPrice * (1 - GetCfgDbl('trailingStop', 3) / 100);
         LAnalysis.SuggestedTakeProfit := LIndicators.CurrentPrice * (1 + GetCfgDbl('takeProfit', 4) / 100);
       end;
       FLastAnalysis := LAnalysis;
@@ -1376,6 +1427,7 @@ begin
           LPos.BuyPrice := LRes.Price;
           LPos.BuyTime := Now;
           LPos.Quantity := LRes.Quantity;
+          LPos.HighestPrice := LRes.Price;
           FOpenPositions.Add(LPos);
           // Rastrear primeira entrada (nao reseta em recompras)
           if not FSymbolFirstEntry.ContainsKey(LSymbol) then
@@ -1386,6 +1438,15 @@ begin
           FDB.SavePosition(LSymbol, LRes.Price, Now, LRes.Quantity);
           AddLog('Posicao', Format('Aberta: %s | Preco: $%.4f | Qtd: %.8f',
             [LSymbol, LPos.BuyPrice, LPos.Quantity], FmtDot));
+          SendTelegram(Format(
+            '&#x1F7E2; <b>COMPRA</b> %s'#10 +
+            'Preco: $%s'#10 +
+            'Qtd: %s'#10 +
+            'Total: $%s',
+            [LSymbol,
+             FormatFloat('0.########', LRes.Price, FmtDot),
+             FormatFloat('0.########', LRes.Quantity, FmtDot),
+             FormatFloat('0.00', LRes.Price * LRes.Quantity, FmtDot)]));
           UpdateBalance;
         end else
         begin
@@ -1436,14 +1497,12 @@ begin
   if LQty <= 0 then
   begin
     AddLog('Erro', Format('Sem saldo de %s na Binance (free=%.8f)', [LAsset, LBal.Free]));
-    // Limpa posicao fantasma do banco local
+    // Limpa todas as posicoes fantasma do banco local
     for PI := FOpenPositions.Count - 1 downto 0 do
       if FOpenPositions[PI].Symbol = LSymbol then
-      begin
         FOpenPositions.Delete(PI);
-        FDB.DeletePosition(LSymbol);
-        AddLog('Bot', 'Posicao local removida (sem saldo real): ' + LSymbol);
-      end;
+    FDB.DeleteAllPositions(LSymbol);
+    AddLog('Bot', 'Posicoes locais removidas (sem saldo real): ' + LSymbol);
     Exit;
   end;
 
@@ -1481,14 +1540,20 @@ begin
           // Persistir no banco
           FDB.SaveTrade(LSymbol, 'SELL', LRes.Price, LRes.Quantity,
             SignalToStrEN(FLastAnalysis.Signal), FLastAnalysis.Confidence, LRes.OrderId, Now);
-          FDB.DeletePosition(LSymbol);
-          // Remover posicao aberta do symbol vendido
+          FDB.DeleteAllPositions(LSymbol);
+          // Remover TODAS as posicoes do symbol vendido (DCA pode ter varias)
           for var PI := FOpenPositions.Count - 1 downto 0 do
             if FOpenPositions[PI].Symbol = LSymbol then
-            begin
               FOpenPositions.Delete(PI);
-              Break;
-            end;
+          SendTelegram(Format(
+            '&#x1F534; <b>VENDA</b> %s'#10 +
+            'Preco: $%s'#10 +
+            'Qtd: %s'#10 +
+            'Total: $%s',
+            [LSymbol,
+             FormatFloat('0.########', LRes.Price, FmtDot),
+             FormatFloat('0.########', LRes.Quantity, FmtDot),
+             FormatFloat('0.00', LRes.Price * LRes.Quantity, FmtDot)]));
           UpdateBalance;
         end else
         begin
@@ -1743,7 +1808,6 @@ begin
         FLastIndicators.CurrentPrice := LPrice;
         TThread.Queue(nil, procedure
         var DP: TJSONObject;
-            LStopLoss, LChangePercent: Double;
             PI: Integer;
         begin
           DP := TJSONObject.Create;
@@ -1751,21 +1815,30 @@ begin
           DP.AddPair('symbol', LSym);
           SendToJS('updatePrice', DP);
 
-          // Verifica stop loss em tempo real para o symbol selecionado (sem API extra)
+          // Verifica trailing stop em tempo real para o symbol selecionado (sem API extra)
           if FBotRunning and (FOpenPositions.Count > 0) then
           begin
-            LStopLoss := GetCfgDbl('stopLoss', 2);
-            if LStopLoss > 0 then
+            var LTrailPct := GetCfgDbl('trailingStop', 3);
+            if LTrailPct > 0 then
               for PI := 0 to FOpenPositions.Count - 1 do
                 if (FOpenPositions[PI].Symbol = LSym) and (FOpenPositions[PI].BuyPrice > 0) then
                 begin
-                  LChangePercent := ((LPrice - FOpenPositions[PI].BuyPrice) / FOpenPositions[PI].BuyPrice) * 100;
-                  if LChangePercent <= -LStopLoss then
+                  // Atualiza pico se necessario
+                  var LPos := FOpenPositions[PI];
+                  if LPrice > LPos.HighestPrice then
                   begin
-                    AddLog('StopLoss', Format(
-                      'STOP LOSS URGENTE: %s | Queda: %.2f%% | Vendendo imediatamente!',
-                      [LSym, LChangePercent], FmtDot));
-                    DoSell(FOpenPositions[PI].Quantity * LPrice);
+                    LPos.HighestPrice := LPrice;
+                    FOpenPositions[PI] := LPos;
+                    try FDB.UpdatePositionHighPrice(LSym, LPrice); except end;
+                  end;
+                  // Verifica queda do pico
+                  var LDrop := ((LPos.HighestPrice - LPrice) / LPos.HighestPrice) * 100;
+                  if (LDrop >= LTrailPct) and (MinutesBetween(Now, LPos.BuyTime) >= 5) then
+                  begin
+                    AddLog('TrailingStop', Format(
+                      'TRAILING STOP URGENTE: %s | Queda do pico: -%.2f%% | Vendendo!',
+                      [LSym, LDrop], FmtDot));
+                    DoSell(LPos.Quantity * LPrice);
                     FLastTradeTime.AddOrSetValue(LSym, Now);
                   end;
                   Break;
@@ -2220,6 +2293,56 @@ begin
 end;
 
 { ================================================================
+  TELEGRAM
+  ================================================================ }
+
+procedure TfrmMain.SendTelegram(const Msg: string);
+var
+  LToken, LChatId: string;
+begin
+  if not GetCfgBool('telegramEnabled', False) then Exit;
+  LToken := GetCfgStr('telegramToken', '');
+  LChatId := GetCfgStr('telegramChatId', '');
+  if (LToken = '') or (LChatId = '') then Exit;
+
+  // Captura valores locais para a thread
+  var LTok := LToken;
+  var LCid := LChatId;
+  var LMsg := Msg;
+  TThread.CreateAnonymousThread(procedure
+  var
+    Http: THTTPClient;
+    Body: TStringStream;
+    JBody: TJSONObject;
+  begin
+    Http := THTTPClient.Create;
+    try
+      Http.ConnectionTimeout := 5000;
+      Http.ResponseTimeout := 10000;
+      JBody := TJSONObject.Create;
+      try
+        JBody.AddPair('chat_id', LCid);
+        JBody.AddPair('text', LMsg);
+        JBody.AddPair('parse_mode', 'HTML');
+        Body := TStringStream.Create(JBody.ToJSON, TEncoding.UTF8);
+        try
+          Http.Post(
+            'https://api.telegram.org/bot' + LTok + '/sendMessage',
+            Body, nil,
+            [TNetHeader.Create('Content-Type', 'application/json')]);
+        finally
+          Body.Free;
+        end;
+      finally
+        JBody.Free;
+      end;
+    finally
+      Http.Free;
+    end;
+  end).Start;
+end;
+
+{ ================================================================
   LOG
   ================================================================ }
 
@@ -2267,7 +2390,7 @@ begin
     FConfig.AddPair('aiBaseURL',     Ini.ReadString('AI', 'BaseURL', ''));
     FConfig.AddPair('interval',      Ini.ReadString('Trading', 'Interval', '1h'));
     FConfig.AddPair('tradeAmount',   Ini.ReadString('Trading', 'Amount', '100'));
-    FConfig.AddPair('stopLoss',      Ini.ReadString('Trading', 'StopLoss', '2.0'));
+    FConfig.AddPair('trailingStop',   Ini.ReadString('Trading', 'TrailingStop', '3.0'));
     FConfig.AddPair('takeProfit',    Ini.ReadString('Trading', 'TakeProfit', '4.0'));
     FConfig.AddPair('minConfidence', Ini.ReadString('Trading', 'MinConfidence', '70'));
     FConfig.AddPair('minScore',      Ini.ReadString('Trading', 'MinScore', '25'));
@@ -2279,6 +2402,14 @@ begin
     FConfig.AddPair('lateralTimeout', Ini.ReadString('Trading', 'LateralTimeout', '24'));
     FConfig.AddPair('tradeCooldown', Ini.ReadString('Trading', 'TradeCooldown', '30'));
     FConfig.AddPair('snapshotInterval', Ini.ReadString('Trading', 'SnapshotInterval', '30'));
+    FConfig.AddPair('dcaEnabled',      TJSONBool.Create(Ini.ReadBool('DCA', 'Enabled', False)));
+    FConfig.AddPair('dcaMax',          Ini.ReadString('DCA', 'Max', '3'));
+    FConfig.AddPair('dcaLevel1',       Ini.ReadString('DCA', 'Level1', '3'));
+    FConfig.AddPair('dcaLevel2',       Ini.ReadString('DCA', 'Level2', '5'));
+    FConfig.AddPair('dcaLevel3',       Ini.ReadString('DCA', 'Level3', '8'));
+    FConfig.AddPair('telegramEnabled', TJSONBool.Create(Ini.ReadBool('Telegram', 'Enabled', False)));
+    FConfig.AddPair('telegramToken',   Ini.ReadString('Telegram', 'Token', ''));
+    FConfig.AddPair('telegramChatId',  Ini.ReadString('Telegram', 'ChatId', ''));
   finally
     Ini.Free;
   end;
@@ -2300,7 +2431,7 @@ begin
     Ini.WriteString('AI',      'BaseURL',       GetCfgStr('aiBaseURL', ''));
     Ini.WriteString('Trading', 'Interval',      GetCfgStr('interval', '1h'));
     Ini.WriteString('Trading', 'Amount',        GetCfgStr('tradeAmount', '100'));
-    Ini.WriteString('Trading', 'StopLoss',      GetCfgStr('stopLoss', '2.0'));
+    Ini.WriteString('Trading', 'TrailingStop',   GetCfgStr('trailingStop', '3.0'));
     Ini.WriteString('Trading', 'TakeProfit',    GetCfgStr('takeProfit', '4.0'));
     Ini.WriteString('Trading', 'MinConfidence', GetCfgStr('minConfidence', '70'));
     Ini.WriteString('Trading', 'MinScore',      GetCfgStr('minScore', '25'));
@@ -2312,6 +2443,14 @@ begin
     Ini.WriteString('Trading', 'LateralTimeout', GetCfgStr('lateralTimeout', '24'));
     Ini.WriteString('Trading', 'TradeCooldown', GetCfgStr('tradeCooldown', '30'));
     Ini.WriteString('Trading', 'SnapshotInterval', GetCfgStr('snapshotInterval', '30'));
+    Ini.WriteBool  ('DCA',     'Enabled',          GetCfgBool('dcaEnabled', False));
+    Ini.WriteString('DCA',     'Max',              GetCfgStr('dcaMax', '3'));
+    Ini.WriteString('DCA',     'Level1',           GetCfgStr('dcaLevel1', '3'));
+    Ini.WriteString('DCA',     'Level2',           GetCfgStr('dcaLevel2', '5'));
+    Ini.WriteString('DCA',     'Level3',           GetCfgStr('dcaLevel3', '8'));
+    Ini.WriteBool  ('Telegram','Enabled',           GetCfgBool('telegramEnabled', False));
+    Ini.WriteString('Telegram','Token',             GetCfgStr('telegramToken', ''));
+    Ini.WriteString('Telegram','ChatId',            GetCfgStr('telegramChatId', ''));
   finally
     Ini.Free;
   end;
@@ -2346,6 +2485,8 @@ begin
   begin
     // Verifica stop loss e take profit PRIMEIRO (urgente)
     CheckStopLossTakeProfit;
+    // Verifica DCA (compra em degraus de queda)
+    CheckDCA;
     // Verifica posicoes lateralizadas
     CheckLateralPositions;
     // Bot: re-scan
@@ -2375,7 +2516,7 @@ begin
   LInterval := GetInterval;
   LMinConf := GetCfgDbl('minConfidence', 70);
   LMinScore := GetCfgDbl('minScore', 25);
-  LStopPct := GetCfgDbl('stopLoss', 2);
+  LStopPct := GetCfgDbl('trailingStop', 3);
   LTPPct := GetCfgDbl('takeProfit', 4);
   LCooldownMin := GetCfgDbl('tradeCooldown', 30);
   LTradeAmt := GetCfgDbl('tradeAmount', 100);
@@ -2582,6 +2723,20 @@ begin
           AddLog('Bot', LLogAnalise);
           AddLog('Bot', 'Motivo: ' + LLogMotivo);
         end);
+
+        // 5b. Notifica oportunidades fortes via Telegram
+        if (LAnalysis.Signal = tsStrongBuy) and (LAnalysis.Confidence >= LMinConf) and not LHasPos then
+        begin
+          var LTgOpp := Format(
+            '&#x1F50D; <b>OPORTUNIDADE</b> %s'#10 +
+            'Sinal: %s | Confianca: %.0f%%'#10 +
+            'Preco: $%s'#10 +
+            '%s',
+            [LSymbol, SignalToStr(LAnalysis.Signal), LAnalysis.Confidence,
+             FormatFloat('0.####', LIndicators.CurrentPrice, FmtDot),
+             LAnalysis.Reasoning]);
+          TThread.Synchronize(nil, procedure begin SendTelegram(LTgOpp); end);
+        end;
 
         // 6. Auto-trade
         if LAutoTrade and FBotRunning and (LAnalysis.Confidence >= LMinConf) then
@@ -2990,9 +3145,9 @@ begin
   // Update config with optimized trading parameters
   var LNewConfig := FConfig.Clone as TJSONObject;
   try
-    LNewConfig.RemovePair('stopLoss');
-    LNewConfig.AddPair('stopLoss',
-      FormatFloat('0.0', Data.GetValue<Double>('stopLoss', 2), FmtDot));
+    LNewConfig.RemovePair('trailingStop');
+    LNewConfig.AddPair('trailingStop',
+      FormatFloat('0.0', Data.GetValue<Double>('stopLoss', 3), FmtDot));
 
     LNewConfig.RemovePair('takeProfit');
     LNewConfig.AddPair('takeProfit',
@@ -3007,11 +3162,11 @@ begin
     LNewConfig := nil;
 
     SaveConfig;
-    AddLog('GA', Format('Parametros aplicados: SL=%.1f%% TP=%.1f%% MinScore=%.0f',
-      [GetCfgDbl('stopLoss', 2), GetCfgDbl('takeProfit', 4), GetCfgDbl('minScore', 25)]));
+    AddLog('GA', Format('Parametros aplicados: TS=%.1f%% TP=%.1f%% MinScore=%.0f',
+      [GetCfgDbl('trailingStop', 3), GetCfgDbl('takeProfit', 4), GetCfgDbl('minScore', 25)]));
 
     var DApplied := TJSONObject.Create;
-    DApplied.AddPair('stopLoss', GetCfgStr('stopLoss', '2.0'));
+    DApplied.AddPair('trailingStop', GetCfgStr('trailingStop', '3.0'));
     DApplied.AddPair('takeProfit', GetCfgStr('takeProfit', '4.0'));
     DApplied.AddPair('minScore', GetCfgStr('minScore', '25'));
     SendToJS('optimizeApplied', DApplied);
@@ -3117,73 +3272,247 @@ procedure TfrmMain.CheckStopLossTakeProfit;
 const
   FEE_PCT = 0.2; // Taxa round-trip Binance (0.1% compra + 0.1% venda)
 var
-  I: Integer;
-  Pos: TOpenPosition;
-  LCurrentPrice, LChangePercent, LNetChange: Double;
-  LStopLoss, LTakeProfit: Double;
+  I, J: Integer;
+  LTrailingPct, LTakeProfit: Double;
+  LCurrentPrice: Double;
   LSavedSymbol: string;
+  // Agrupamento por symbol
+  LSymbol: string;
+  LAvgPrice, LTotalQty, LTotalCost, LHighestPrice: Double;
+  LEarliestBuy: TDateTime;
+  LProcessed: TList<string>;
+  LChangePercent, LNetChange, LDropFromPeak: Double;
 begin
   if FOpenPositions.Count = 0 then Exit;
   if not FBotRunning then Exit;
 
-  LStopLoss := GetCfgDbl('stopLoss', 2);
+  LTrailingPct := GetCfgDbl('trailingStop', 3);
   LTakeProfit := GetCfgDbl('takeProfit', 4);
+  if (LTrailingPct <= 0) and (LTakeProfit <= 0) then Exit;
 
-  // Se ambos estao zerados, nao verifica
-  if (LStopLoss <= 0) and (LTakeProfit <= 0) then Exit;
-
-  for I := FOpenPositions.Count - 1 downto 0 do
-  begin
-    Pos := FOpenPositions[I];
-    if Pos.BuyPrice <= 0 then Continue;
-
-    try
-      LCurrentPrice := FBinance.GetPrice(Pos.Symbol);
-    except
-      Continue;
-    end;
-    if LCurrentPrice <= 0 then Continue;
-
-    LChangePercent := ((LCurrentPrice - Pos.BuyPrice) / Pos.BuyPrice) * 100;
-    LNetChange := LChangePercent - FEE_PCT; // Lucro/perda liquida descontando taxas
-
-    // Stop Loss: delay de 5 minutos apos compra para evitar stop por spread
-    if (LStopLoss > 0) and (LChangePercent <= -LStopLoss)
-      and (MinutesBetween(Now, Pos.BuyTime) >= 5) then
+  LProcessed := TList<string>.Create;
+  try
+    for I := 0 to FOpenPositions.Count - 1 do
     begin
-      AddLog('StopLoss', Format(
-        'STOP LOSS ACIONADO: %s | Compra: $%s | Atual: $%s | Variacao: %.2f%% (liq: %.2f%%)',
-        [Pos.Symbol,
-         FormatFloat('0.########', Pos.BuyPrice, FmtDot),
-         FormatFloat('0.########', LCurrentPrice, FmtDot),
-         LChangePercent, LNetChange], FmtDot));
+      LSymbol := FOpenPositions[I].Symbol;
+      if FOpenPositions[I].BuyPrice <= 0 then Continue;
+      if LProcessed.Contains(LSymbol) then Continue;
+      LProcessed.Add(LSymbol);
 
-      LSavedSymbol := FSelectedSymbol;
-      FSelectedSymbol := Pos.Symbol;
-      DoSell(Pos.Quantity * LCurrentPrice);
-      FSelectedSymbol := LSavedSymbol;
-      FLastTradeTime.AddOrSetValue(Pos.Symbol, Now);
+      // Agrupa todas as posicoes do symbol (DCA): preco medio ponderado
+      LTotalQty := 0;
+      LTotalCost := 0;
+      LHighestPrice := 0;
+      LEarliestBuy := Now;
+      for J := 0 to FOpenPositions.Count - 1 do
+        if FOpenPositions[J].Symbol = LSymbol then
+        begin
+          LTotalQty := LTotalQty + FOpenPositions[J].Quantity;
+          LTotalCost := LTotalCost + (FOpenPositions[J].BuyPrice * FOpenPositions[J].Quantity);
+          if FOpenPositions[J].HighestPrice > LHighestPrice then
+            LHighestPrice := FOpenPositions[J].HighestPrice;
+          if FOpenPositions[J].BuyTime < LEarliestBuy then
+            LEarliestBuy := FOpenPositions[J].BuyTime;
+        end;
 
-      Break; // Processa uma por ciclo
-    end
-    // Take Profit: preco subiu mais que o limite + taxas (lucro real positivo)
-    else if (LTakeProfit > 0) and (LNetChange >= LTakeProfit) then
-    begin
-      AddLog('TakeProfit', Format(
-        'TAKE PROFIT ACIONADO: %s | Compra: $%s | Atual: $%s | Variacao: +%.2f%% (liq: +%.2f%%)',
-        [Pos.Symbol,
-         FormatFloat('0.########', Pos.BuyPrice, FmtDot),
-         FormatFloat('0.########', LCurrentPrice, FmtDot),
-         LChangePercent, LNetChange], FmtDot));
+      if LTotalQty <= 0 then Continue;
+      LAvgPrice := LTotalCost / LTotalQty;
 
-      LSavedSymbol := FSelectedSymbol;
-      FSelectedSymbol := Pos.Symbol;
-      DoSell(Pos.Quantity * LCurrentPrice);
-      FSelectedSymbol := LSavedSymbol;
-      FLastTradeTime.AddOrSetValue(Pos.Symbol, Now);
+      try
+        LCurrentPrice := FBinance.GetPrice(LSymbol);
+      except
+        Continue;
+      end;
+      if LCurrentPrice <= 0 then Continue;
 
-      Break; // Processa uma por ciclo
+      // Atualiza HighestPrice em todas as posicoes do symbol
+      if LCurrentPrice > LHighestPrice then
+      begin
+        LHighestPrice := LCurrentPrice;
+        for J := 0 to FOpenPositions.Count - 1 do
+          if (FOpenPositions[J].Symbol = LSymbol) and (LCurrentPrice > FOpenPositions[J].HighestPrice) then
+          begin
+            var LPos := FOpenPositions[J];
+            LPos.HighestPrice := LCurrentPrice;
+            FOpenPositions[J] := LPos;
+          end;
+        try FDB.UpdatePositionHighPrice(LSymbol, LCurrentPrice); except end;
+      end;
+
+      LChangePercent := ((LCurrentPrice - LAvgPrice) / LAvgPrice) * 100;
+      LNetChange := LChangePercent - FEE_PCT;
+      LDropFromPeak := ((LHighestPrice - LCurrentPrice) / LHighestPrice) * 100;
+
+      // Trailing Stop: queda do pico >= trailing% (delay 5 min da compra mais antiga)
+      if (LTrailingPct > 0) and (LDropFromPeak >= LTrailingPct)
+        and (MinutesBetween(Now, LEarliestBuy) >= 5) then
+      begin
+        AddLog('TrailingStop', Format(
+          'TRAILING STOP: %s | Medio: $%s | Pico: $%s | Atual: $%s | Queda: -%.2f%% | P&L: %.2f%%',
+          [LSymbol,
+           FormatFloat('0.########', LAvgPrice, FmtDot),
+           FormatFloat('0.########', LHighestPrice, FmtDot),
+           FormatFloat('0.########', LCurrentPrice, FmtDot),
+           LDropFromPeak, LNetChange], FmtDot));
+        SendTelegram(Format(
+          '&#x26A0; <b>TRAILING STOP</b> %s'#10 +
+          'Medio: $%s | Pico: $%s'#10 +
+          'Atual: $%s'#10 +
+          'Queda: -%.2f%% | P&L: %.2f%%',
+          [LSymbol,
+           FormatFloat('0.####', LAvgPrice, FmtDot),
+           FormatFloat('0.####', LHighestPrice, FmtDot),
+           FormatFloat('0.####', LCurrentPrice, FmtDot),
+           LDropFromPeak, LNetChange], FmtDot));
+
+        LSavedSymbol := FSelectedSymbol;
+        FSelectedSymbol := LSymbol;
+        FLastIndicators.CurrentPrice := LCurrentPrice;
+        DoSell(LTotalQty * LCurrentPrice);
+        FSelectedSymbol := LSavedSymbol;
+        FLastTradeTime.AddOrSetValue(LSymbol, Now);
+        Break;
+      end
+      // Take Profit: lucro liquido >= takeProfit%
+      else if (LTakeProfit > 0) and (LNetChange >= LTakeProfit) then
+      begin
+        AddLog('TakeProfit', Format(
+          'TAKE PROFIT: %s | Medio: $%s | Pico: $%s | Atual: $%s | P&L: +%.2f%% (liq: +%.2f%%)',
+          [LSymbol,
+           FormatFloat('0.########', LAvgPrice, FmtDot),
+           FormatFloat('0.########', LHighestPrice, FmtDot),
+           FormatFloat('0.########', LCurrentPrice, FmtDot),
+           LChangePercent, LNetChange], FmtDot));
+        SendTelegram(Format(
+          '&#x1F4B0; <b>TAKE PROFIT</b> %s'#10 +
+          'Medio: $%s | Atual: $%s'#10 +
+          'P&L: +%.2f%% (liq: +%.2f%%)',
+          [LSymbol,
+           FormatFloat('0.####', LAvgPrice, FmtDot),
+           FormatFloat('0.####', LCurrentPrice, FmtDot),
+           LChangePercent, LNetChange], FmtDot));
+
+        LSavedSymbol := FSelectedSymbol;
+        FSelectedSymbol := LSymbol;
+        FLastIndicators.CurrentPrice := LCurrentPrice;
+        DoSell(LTotalQty * LCurrentPrice);
+        FSelectedSymbol := LSavedSymbol;
+        FLastTradeTime.AddOrSetValue(LSymbol, Now);
+        Break;
+      end;
     end;
+  finally
+    LProcessed.Free;
+  end;
+end;
+
+procedure TfrmMain.CheckDCA;
+var
+  I, J: Integer;
+  LSymbol: string;
+  LFirstPrice, LCurrentPrice, LDropPct: Double;
+  LPosCount: Integer;
+  LTradeAmt: Double;
+  LMaxDCA: Integer;
+  LLevels: array[0..2] of Double;
+  LProcessed: TList<string>;
+  LSavedSymbol: string;
+  LUSDTBal: Double;
+begin
+  if FOpenPositions.Count = 0 then Exit;
+  if not FBotRunning then Exit;
+  if not GetCfgBool('dcaEnabled', False) then Exit;
+
+  LTradeAmt := GetCfgDbl('tradeAmount', 100);
+  LMaxDCA := Round(GetCfgDbl('dcaMax', 3));
+  if LMaxDCA < 1 then LMaxDCA := 1;
+  if LMaxDCA > 3 then LMaxDCA := 3;
+  LLevels[0] := GetCfgDbl('dcaLevel1', 3);
+  LLevels[1] := GetCfgDbl('dcaLevel2', 5);
+  LLevels[2] := GetCfgDbl('dcaLevel3', 8);
+
+  // Verifica saldo USDT
+  try
+    LUSDTBal := FBinance.GetBalance('USDT').Free;
+  except
+    Exit;
+  end;
+  if LUSDTBal < LTradeAmt then Exit;
+
+  LProcessed := TList<string>.Create;
+  try
+    for I := 0 to FOpenPositions.Count - 1 do
+    begin
+      LSymbol := FOpenPositions[I].Symbol;
+      if LProcessed.Contains(LSymbol) then Continue;
+      LProcessed.Add(LSymbol);
+
+      // Conta posicoes e pega preco da primeira compra (mais antiga)
+      LPosCount := 0;
+      LFirstPrice := 0;
+      var LEarliestTime: TDateTime := EncodeDate(9999,12,31);
+      for J := 0 to FOpenPositions.Count - 1 do
+        if FOpenPositions[J].Symbol = LSymbol then
+        begin
+          Inc(LPosCount);
+          if FOpenPositions[J].BuyTime < LEarliestTime then
+          begin
+            LEarliestTime := FOpenPositions[J].BuyTime;
+            LFirstPrice := FOpenPositions[J].BuyPrice;
+          end;
+        end;
+
+      if LFirstPrice <= 0 then Continue;
+
+      // Ja atingiu maximo de DCAs? (posCount = 1 original + N DCAs)
+      var LDCAsDone := LPosCount - 1;
+      if LDCAsDone >= LMaxDCA then Continue;
+
+      // Proximo nivel de DCA
+      var LNextLevel := LLevels[LDCAsDone]; // 0-based: DCA#1=level[0], DCA#2=level[1]...
+
+      try
+        LCurrentPrice := FBinance.GetPrice(LSymbol);
+      except
+        Continue;
+      end;
+      if LCurrentPrice <= 0 then Continue;
+
+      LDropPct := ((LFirstPrice - LCurrentPrice) / LFirstPrice) * 100;
+
+      if LDropPct >= LNextLevel then
+      begin
+        // Cooldown: nao fazer DCA se fez trade recente
+        var LLastTime: TDateTime;
+        if FLastTradeTime.TryGetValue(LSymbol, LLastTime) then
+          if MinutesBetween(Now, LLastTime) < 5 then Continue;
+
+        AddLog('DCA', Format(
+          'DCA #%d: %s | Entry: $%s | Atual: $%s | Queda: -%.2f%% (nivel: -%.1f%%)',
+          [LDCAsDone + 1, LSymbol,
+           FormatFloat('0.########', LFirstPrice, FmtDot),
+           FormatFloat('0.########', LCurrentPrice, FmtDot),
+           LDropPct, LNextLevel], FmtDot));
+        SendTelegram(Format(
+          '&#x1F504; <b>DCA #%d</b> %s'#10 +
+          'Entry: $%s | Atual: $%s'#10 +
+          'Queda: -%.2f%% (nivel: -%.1f%%)',
+          [LDCAsDone + 1, LSymbol,
+           FormatFloat('0.####', LFirstPrice, FmtDot),
+           FormatFloat('0.####', LCurrentPrice, FmtDot),
+           LDropPct, LNextLevel], FmtDot));
+
+        LSavedSymbol := FSelectedSymbol;
+        FSelectedSymbol := LSymbol;
+        FLastIndicators.CurrentPrice := LCurrentPrice;
+        DoBuy(LTradeAmt);
+        FSelectedSymbol := LSavedSymbol;
+        FLastTradeTime.AddOrSetValue(LSymbol, Now);
+        Break; // Um DCA por ciclo
+      end;
+    end;
+  finally
+    LProcessed.Free;
   end;
 end;
 
