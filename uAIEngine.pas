@@ -433,12 +433,13 @@ function TAIEngine.BuildPrompt(const Symbol: string; const Ind: TTechnicalIndica
 var S, PosContext: string; I, Start: Integer;
     FmtDot: TFormatSettings;
 begin
+  FmtDot := TFormatSettings.Create;
   FmtDot.DecimalSeparator := '.';
   S := '';
   Start := Max(0, Length(C)-10);
   for I := Start to High(C) do
     S := S + Format('%.2f, %.2f, %.2f, %.2f, Vol:%.0f'#13#10,
-      [C[I].Open, C[I].High, C[I].Low, C[I].Close, C[I].Volume]);
+      [C[I].Open, C[I].High, C[I].Low, C[I].Close, C[I].Volume], FmtDot);
 
   if HasPosition then
     PosContext := Format(
@@ -539,7 +540,10 @@ begin
         while (NumEnd <= Length(ConfStr)) and CharInSet(ConfStr[NumEnd], ['0'..'9','.']) do
           Inc(NumEnd);
         var ConfVal: Double;
-        if TryStrToFloat(Copy(ConfStr, NumStart, NumEnd - NumStart), ConfVal) then
+        var LFmt: TFormatSettings;
+        LFmt := TFormatSettings.Create;
+        LFmt.DecimalSeparator := '.';
+        if TryStrToFloat(Copy(ConfStr, NumStart, NumEnd - NumStart), ConfVal, LFmt) then
           Result.Confidence := ConfVal;
       end;
     end;

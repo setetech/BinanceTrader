@@ -86,7 +86,11 @@ begin
 end;
 
 function TTechnicalIndicators.ToText: string;
+var
+  Fmt: TFormatSettings;
 begin
+  Fmt := TFormatSettings.Create;
+  Fmt.DecimalSeparator := '.';
   Result := Format(
     'Preco Atual: %.8f'#13#10 +
     'Variacao 24h: %.2f%%'#13#10 +
@@ -100,7 +104,7 @@ begin
     [CurrentPrice, PriceChange24h, Volume24h,
      RSI, MACD, MACDSignal, MACDHistogram,
      SMA20, SMA50, EMA12, EMA26,
-     BollingerUpper, BollingerMiddle, BollingerLower, ATR]);
+     BollingerUpper, BollingerMiddle, BollingerLower, ATR], Fmt);
 end;
 
 function SignalToStr(S: TTradeSignal): string;

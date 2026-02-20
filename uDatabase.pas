@@ -254,7 +254,14 @@ function TDatabase.LoadPositions: TList<TOpenPosition>;
 var
   Q: TUniQuery;
   Pos: TOpenPosition;
+  FmtISO: TFormatSettings;
 begin
+  FmtISO := TFormatSettings.Create;
+  FmtISO.DateSeparator := '-';
+  FmtISO.TimeSeparator := ':';
+  FmtISO.ShortDateFormat := 'yyyy-mm-dd';
+  FmtISO.LongTimeFormat := 'hh:nn:ss';
+
   Result := TList<TOpenPosition>.Create;
   Q := TUniQuery.Create(nil);
   try
@@ -265,7 +272,7 @@ begin
     begin
       Pos.Symbol := Q.FieldByName('symbol').AsString;
       Pos.BuyPrice := Q.FieldByName('buy_price').AsFloat;
-      Pos.BuyTime := StrToDateTimeDef(Q.FieldByName('buy_time').AsString, Now);
+      Pos.BuyTime := StrToDateTimeDef(Q.FieldByName('buy_time').AsString, Now, FmtISO);
       Pos.Quantity := Q.FieldByName('quantity').AsFloat;
       Pos.HighestPrice := Q.FieldByName('high_price').AsFloat;
       if Pos.HighestPrice <= 0 then Pos.HighestPrice := Pos.BuyPrice;

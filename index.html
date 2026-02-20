@@ -1150,7 +1150,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           </div>
           <div style="margin-bottom:14px;">
             <span style="font-size:12px;color:var(--text-muted);">MOEDA SELECIONADA</span>
-            <div style="font-size:18px;font-weight:700;color:var(--accent);margin-top:4px;" id="trade-selected-coin">Nenhuma selecionada</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+              <div style="font-size:18px;font-weight:700;color:var(--accent);" id="trade-selected-coin">Nenhuma selecionada</div>
+              <button class="btn btn-sm" onclick="openCoinSelectorModal()" style="font-size:11px;padding:4px 10px;">&#x1F50D; Selecionar</button>
+            </div>
             <div style="font-size:14px;color:var(--text-muted);margin-top:2px;" id="trade-selected-price">--</div>
           </div>
           <div class="input-group">
@@ -1163,6 +1166,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           <div class="trade-buttons">
             <button class="btn btn-green btn-lg" onclick="doBuy()">&#x1F7E2; COMPRAR</button>
             <button class="btn btn-red btn-lg" onclick="doSell()">&#x1F534; VENDER</button>
+          </div>
+          <div style="margin-top:8px;text-align:center;">
+            <button class="btn btn-sm" onclick="doRegisterPosition()" style="font-size:11px;padding:4px 12px;opacity:0.7;">
+              &#x1F4CB; Registrar Posicao (moeda ja comprada fora do bot)
+            </button>
           </div>
         </div>
 
@@ -1449,7 +1457,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
         </div>
 
         <!-- Telegram -->
-        <div class="config-card">
+        <div class="card">
           <h3>Telegram</h3>
           <div class="toggle-wrapper">
             <div>
@@ -3028,6 +3036,27 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
       </div>
     </div>
 
+    <!-- COIN SELECTOR MODAL -->
+    <div class="modal-overlay" id="coin-selector-modal" onclick="closeCoinSelectorModal(event)">
+      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:520px;">
+        <div class="modal-header">
+          <span style="font-weight:700;font-size:15px;">&#x1F50D; Selecionar Moeda</span>
+          <button class="modal-close-btn" onclick="closeCoinSelectorModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0;">
+          <div style="padding:12px 14px;">
+            <input type="text" id="coin-search-input" placeholder="Buscar... (ex: BTC, ETH, DOGE, KAIA)"
+                   oninput="filterCoinSelector()"
+                   style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;background:var(--bg-primary);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;outline:none;">
+          </div>
+          <div id="coin-selector-loading" style="text-align:center;padding:30px;color:var(--text-muted);display:none;">
+            <div style="font-size:14px;">Carregando pares USDT...</div>
+          </div>
+          <div id="coin-selector-list" style="max-height:420px;overflow-y:auto;padding:0 4px 8px 4px;"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -3148,6 +3177,7 @@ function handleDelphiMessage(msg) {
     case 'testAIResult':      onTestAIResult(data); break;
     case 'aiStats':           onAIStats(data); break;
     case 'coinHistoryData':   onCoinHistoryData(data); break;
+    case 'allSymbols':        onAllSymbols(data); break;
     default: break;
   }
 }
@@ -3464,6 +3494,13 @@ function doSell() {
   sendToDelphi('sell', { amount: parseFloat(amount) });
 }
 
+function doRegisterPosition() {
+  var sym = state.selectedCoin;
+  if (!sym) { alert('Selecione uma moeda primeiro'); return; }
+  if (!confirm('Registrar posicao para ' + sym + '?\n\nO bot vai buscar seu saldo atual e preco, e registrar como posicao aberta para monitoramento (stop loss, take profit, IA).')) return;
+  sendToDelphi('registerPosition', { symbol: sym });
+}
+
 function doStartBot() {
   sendToDelphi('startBot');
 }
@@ -3686,25 +3723,25 @@ function doSaveConfig() {
     aiModel: getEffectiveAIModel(),
     aiVision: document.getElementById('cfg-aiVision').checked,
     aiBaseURL: getInputVal('cfg-aiBaseURL'),
-    tradeAmount: parseFloat(getInputVal('cfg-tradeAmount')) || 10,
-    trailingStop: parseFloat(getInputVal('cfg-trailingStop')) || 3,
-    takeProfit: parseFloat(getInputVal('cfg-takeProfit')) || 3,
-    minConfidence: parseFloat(getInputVal('cfg-minConfidence')) || 70,
-    minScore: parseInt(getInputVal('cfg-minScore'), 10) || 25,
-    botInterval: parseInt(getInputVal('cfg-botInterval'), 10) || 60,
+    tradeAmount: numVal(getInputVal('cfg-tradeAmount'), 10),
+    trailingStop: numVal(getInputVal('cfg-trailingStop'), 3),
+    takeProfit: numVal(getInputVal('cfg-takeProfit'), 3),
+    minConfidence: numVal(getInputVal('cfg-minConfidence'), 70),
+    minScore: intVal(getInputVal('cfg-minScore'), 25),
+    botInterval: intVal(getInputVal('cfg-botInterval'), 60),
     scanMode: (document.getElementById('cfg-scanMode') || {}).value || 'recovery',
-    recoveryHours: parseInt(getInputVal('cfg-recoveryHours'), 10) || 24,
-    topCoins: parseInt(getInputVal('cfg-topCoins'), 10) || 30,
-    lateralTimeout: parseInt(getInputVal('cfg-lateralTimeout'), 10) || 24,
-    tradeCooldown: parseInt(getInputVal('cfg-tradeCooldown'), 10) || 30,
-    snapshotInterval: parseInt(getInputVal('cfg-snapshotInterval'), 10) || 30,
+    recoveryHours: intVal(getInputVal('cfg-recoveryHours'), 24),
+    topCoins: intVal(getInputVal('cfg-topCoins'), 30),
+    lateralTimeout: intVal(getInputVal('cfg-lateralTimeout'), 24),
+    tradeCooldown: intVal(getInputVal('cfg-tradeCooldown'), 30),
+    snapshotInterval: intVal(getInputVal('cfg-snapshotInterval'), 30),
     autoTrade: getToggle('cfg-autoTrade'),
     interval: getInputVal('cfg-interval'),
     dcaEnabled: getToggle('cfg-dcaEnabled'),
-    dcaMax: parseInt(getInputVal('cfg-dcaMax'), 10) || 3,
-    dcaLevel1: parseFloat(getInputVal('cfg-dcaLevel1')) || 3,
-    dcaLevel2: parseFloat(getInputVal('cfg-dcaLevel2')) || 5,
-    dcaLevel3: parseFloat(getInputVal('cfg-dcaLevel3')) || 8,
+    dcaMax: intVal(getInputVal('cfg-dcaMax'), 3),
+    dcaLevel1: numVal(getInputVal('cfg-dcaLevel1'), 3),
+    dcaLevel2: numVal(getInputVal('cfg-dcaLevel2'), 5),
+    dcaLevel3: numVal(getInputVal('cfg-dcaLevel3'), 8),
     telegramEnabled: getToggle('cfg-telegramEnabled'),
     telegramToken: getInputVal('cfg-telegramToken'),
     telegramChatId: getInputVal('cfg-telegramChatId')
@@ -4410,6 +4447,16 @@ function setInputVal(id, val) {
 function getInputVal(id) {
   var el = document.getElementById(id);
   return el ? el.value.trim() : '';
+}
+
+function numVal(str, def) {
+  var v = parseFloat(str);
+  return isNaN(v) ? def : v;
+}
+
+function intVal(str, def) {
+  var v = parseInt(str, 10);
+  return isNaN(v) ? def : v;
 }
 
 function setToggle(id, active) {
@@ -5176,11 +5223,108 @@ function drawModalChart() {
   }
 }
 
-// Close modal on Escape key
+// =====================================================================
+// COIN SELECTOR MODAL
+// =====================================================================
+state.allSymbols = [];
+
+function openCoinSelectorModal() {
+  var modal = document.getElementById('coin-selector-modal');
+  modal.classList.add('active');
+  document.getElementById('coin-search-input').value = '';
+  document.getElementById('coin-selector-list').innerHTML = '';
+  document.getElementById('coin-selector-loading').style.display = 'block';
+  setTimeout(function() {
+    document.getElementById('coin-search-input').focus();
+  }, 100);
+  sendToDelphi('getAllSymbols', {});
+}
+
+function closeCoinSelectorModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById('coin-selector-modal').classList.remove('active');
+}
+
+function onAllSymbols(data) {
+  state.allSymbols = data.symbols || [];
+  document.getElementById('coin-selector-loading').style.display = 'none';
+  renderCoinSelectorList('');
+}
+
+function filterCoinSelector() {
+  var query = (document.getElementById('coin-search-input').value || '').toUpperCase().trim();
+  renderCoinSelectorList(query);
+}
+
+function renderCoinSelectorList(filter) {
+  var list = state.allSymbols;
+  if (!list || list.length === 0) {
+    document.getElementById('coin-selector-list').innerHTML =
+      '<div style="text-align:center;padding:20px;color:var(--text-muted);">Nenhum par encontrado</div>';
+    return;
+  }
+
+  var filtered = [];
+  for (var i = 0; i < list.length; i++) {
+    var sym = list[i].symbol || '';
+    var base = sym.replace('USDT', '');
+    if (filter && sym.indexOf(filter) < 0 && base.indexOf(filter) < 0) continue;
+    filtered.push(list[i]);
+    if (filtered.length >= 100) break; // Limita a 100 para performance
+  }
+
+  if (filtered.length === 0) {
+    document.getElementById('coin-selector-list').innerHTML =
+      '<div style="text-align:center;padding:20px;color:var(--text-muted);">Nenhum resultado para "' + escapeHtml(filter) + '"</div>';
+    return;
+  }
+
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<thead><tr style="color:var(--text-muted);font-size:11px;text-transform:uppercase;">';
+  html += '<th style="text-align:left;padding:6px 12px;">Par</th>';
+  html += '<th style="text-align:right;padding:6px 12px;">Preco</th>';
+  html += '<th style="text-align:right;padding:6px 12px;">24h</th>';
+  html += '<th style="text-align:right;padding:6px 12px;">Vol (USDT)</th>';
+  html += '</tr></thead><tbody>';
+
+  for (var j = 0; j < filtered.length; j++) {
+    var item = filtered[j];
+    var symbol = item.symbol || '';
+    var price = parseFloat(item.price) || 0;
+    var change = parseFloat(item.change) || 0;
+    var vol = parseFloat(item.volume) || 0;
+    var changeColor = change >= 0 ? 'var(--green)' : 'var(--red)';
+    var changeSign = change >= 0 ? '+' : '';
+    var isSelected = (symbol === state.selectedCoin);
+
+    html += '<tr onclick="selectFromModal(\'' + escapeAttr(symbol) + '\')" ' +
+      'style="cursor:pointer;border-top:1px solid var(--border);' +
+      (isSelected ? 'background:rgba(0,200,255,0.1);' : '') + '" ' +
+      'onmouseover="this.style.background=\'rgba(255,255,255,0.05)\'" ' +
+      'onmouseout="this.style.background=\'' + (isSelected ? 'rgba(0,200,255,0.1)' : '') + '\'">';
+    html += '<td style="padding:8px 12px;font-weight:600;">' + escapeHtml(symbol.replace('USDT', '')) +
+      '<span style="color:var(--text-muted);font-weight:400;font-size:11px;"> /USDT</span></td>';
+    html += '<td style="text-align:right;padding:8px 12px;">' + formatPrice(price) + '</td>';
+    html += '<td style="text-align:right;padding:8px 12px;color:' + changeColor + ';">' + changeSign + change.toFixed(2) + '%</td>';
+    html += '<td style="text-align:right;padding:8px 12px;color:var(--text-muted);">' + formatVolume(vol) + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('coin-selector-list').innerHTML = html;
+}
+
+function selectFromModal(symbol) {
+  closeCoinSelectorModal();
+  doSelectCoin(symbol);
+}
+
+// Close modals on Escape key
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     var modal = document.getElementById('coin-history-modal');
     if (modal && modal.classList.contains('active')) closeCoinHistoryModal();
+    var selectorModal = document.getElementById('coin-selector-modal');
+    if (selectorModal && selectorModal.classList.contains('active')) closeCoinSelectorModal();
   }
 });
 
