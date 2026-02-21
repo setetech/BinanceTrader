@@ -33,6 +33,12 @@ type
     SMA20, SMA50, EMA12, EMA26: Double;
     BollingerUpper, BollingerMiddle, BollingerLower: Double;
     ATR, CurrentPrice, PriceChange24h, Volume24h: Double;
+    // Order Book
+    OBImbalance: Double;   // 0-1, >0.6=bullish, <0.4=bearish
+    OBSpread: Double;      // % spread
+    OBBidTotal, OBAskTotal: Double;
+    OBBigBidWall, OBBigAskWall: Double;
+    OBBigBidPrice, OBBigAskPrice: Double;
     function ToText: string;
   end;
 
@@ -59,6 +65,22 @@ type
     BuyTime: TDateTime;
     Quantity: Double;
     HighestPrice: Double;
+  end;
+
+  TOrderBookLevel = record
+    Price: Double;
+    Quantity: Double;
+  end;
+
+  TOrderBookData = record
+    Symbol: string;
+    BidTotal, AskTotal: Double;         // Volume total de bids/asks
+    Imbalance: Double;                   // bid/(bid+ask) - 0.5=neutro, >0.6=bullish, <0.4=bearish
+    Spread: Double;                      // % spread entre best bid e best ask
+    BestBid, BestAsk: Double;
+    BiggestBidWall, BiggestAskWall: Double;       // Maior ordem
+    BiggestBidWallPrice, BiggestAskWallPrice: Double; // Preco da maior ordem
+    Bids, Asks: TArray<TOrderBookLevel>;
   end;
 
   TCoinRecovery = record
@@ -105,6 +127,20 @@ begin
      RSI, MACD, MACDSignal, MACDHistogram,
      SMA20, SMA50, EMA12, EMA26,
      BollingerUpper, BollingerMiddle, BollingerLower, ATR], Fmt);
+  // Order Book (so inclui se foi preenchido)
+  if OBImbalance > 0 then
+  begin
+    Result := Result + Format(#13#10 +
+      'OrderBook Imbalance: %.2f (>0.6=bullish, <0.4=bearish)'#13#10 +
+      'OrderBook Spread: %.4f%%'#13#10 +
+      'Bids Total: $%.0f | Asks Total: $%.0f'#13#10 +
+      'Maior Buy Wall: $%.0f @ %.8f'#13#10 +
+      'Maior Sell Wall: $%.0f @ %.8f',
+      [OBImbalance, OBSpread,
+       OBBidTotal, OBAskTotal,
+       OBBigBidWall, OBBigBidPrice,
+       OBBigAskWall, OBBigAskPrice], Fmt);
+  end;
 end;
 
 function SignalToStr(S: TTradeSignal): string;

@@ -500,6 +500,7 @@ html, body {
 .btn-blue:hover { background: #1a7de0; }
 .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-muted); }
 .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+.ai-preset-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-lg { padding: 12px 32px; font-size: 16px; }
 
@@ -932,6 +933,76 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .wallet-table-card table { width: 100%; }
 .wallet-loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 13px; }
 
+/* ===== CHAT TAB ===== */
+.tab-panel.chat-panel.active {
+  display: flex; flex-direction: column; padding: 0; overflow: hidden;
+}
+.chat-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary); height: 45px; min-height: 45px;
+}
+.chat-title { font-weight: 700; font-size: 14px; color: var(--accent); }
+.chat-messages {
+  overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  height: calc(100vh - 50px - 42px - 28px - 45px - 64px);
+}
+.chat-welcome {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 40px 20px; text-align: center; color: var(--text-muted); gap: 12px; flex: 1;
+}
+.chat-welcome-icon { font-size: 48px; }
+.chat-welcome-text { font-size: 14px; line-height: 1.6; max-width: 500px; }
+.chat-msg {
+  max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  line-height: 1.55; word-wrap: break-word; white-space: pre-wrap;
+}
+.chat-msg-user {
+  align-self: flex-end; background: var(--accent); color: #000;
+  border-bottom-right-radius: 4px;
+}
+.chat-msg-ai {
+  align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+.chat-msg-ai p { margin: 0 0 8px 0; }
+.chat-msg-ai p:last-child { margin-bottom: 0; }
+.chat-msg-ai strong { color: var(--accent); }
+.chat-msg-ai code {
+  background: var(--bg-primary); padding: 1px 5px; border-radius: 3px; font-size: 12px;
+}
+.chat-msg-ai ul, .chat-msg-ai ol { margin: 4px 0 8px 18px; }
+.chat-msg-ai li { margin-bottom: 3px; }
+.chat-msg-error { color: var(--red); font-style: italic; }
+.chat-msg-time {
+  font-size: 10px; color: var(--text-muted); margin-top: 4px;
+}
+.chat-typing {
+  align-self: flex-start; padding: 10px 14px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 12px; border-bottom-left-radius: 4px;
+  color: var(--text-muted); font-size: 13px;
+}
+.chat-typing-dots::after {
+  content: ''; animation: typingDots 1.4s infinite;
+}
+@keyframes typingDots {
+  0% { content: '.'; }
+  33% { content: '..'; }
+  66% { content: '...'; }
+}
+.chat-input-area {
+  display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border);
+  background: var(--bg-secondary); min-height: 64px; align-items: flex-end;
+}
+.chat-input-area textarea {
+  flex: 1; resize: none; background: var(--bg-primary); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 13px;
+  font-family: inherit; outline: none; max-height: 120px; min-height: 40px;
+  line-height: 1.4;
+}
+.chat-input-area textarea:focus { border-color: var(--accent); }
+.chat-send-btn { padding: 10px 20px; font-size: 13px; min-height: 40px; }
+
 /* ===== COIN HISTORY MODAL ===== */
 .modal-overlay {
   display: none;
@@ -1028,6 +1099,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     <button class="tab-btn" data-tab="help">&#x1F4D6; Manual</button>
     <button class="tab-btn" data-tab="performance">&#x1F4CA; Desempenho</button>
     <button class="tab-btn" data-tab="wallet">&#x1F4B0; Carteira</button>
+    <button class="tab-btn" data-tab="chat">&#x1F4AC; Chat IA</button>
   </div>
 
   <!-- ====== TAB CONTENT ====== -->
@@ -1080,6 +1152,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
           <!-- Chart -->
           <div class="card" style="padding:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:12px; color:var(--text-dim);">Grafico de Candles</span>
+              <button class="btn" onclick="sendChartToTelegram()" title="Enviar grafico para o Telegram" style="font-size:12px; padding:5px 14px; background:var(--accent); color:#000; font-weight:600;">
+                &#x1F4E4; Enviar Telegram
+              </button>
+            </div>
             <div class="chart-container" id="chart-wrapper">
               <canvas id="candle-chart" height="300"></canvas>
               <div class="chart-tooltip" id="chart-tooltip"></div>
@@ -1292,10 +1370,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           <div style="margin-bottom:12px;">
             <label style="font-size:11px;color:var(--text-muted);margin-bottom:6px;display:block;">Preset Rapido</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('openai')">OpenAI</button>
-              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('deepseek')">DeepSeek</button>
-              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('lmstudio')">LM Studio (Local)</button>
-              <button class="btn btn-outline" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('ollama')">Ollama (Local)</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="openai" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('openai')">OpenAI</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="groq" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('groq')">Groq (Gratis)</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="mistral" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('mistral')">Mistral (Gratis)</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="cerebras" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('cerebras')">Cerebras (Gratis)</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="deepseek" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('deepseek')">DeepSeek</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="lmstudio" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('lmstudio')">LM Studio (Local)</button>
+              <button class="btn btn-outline ai-preset-btn" data-preset="ollama" style="font-size:11px;padding:4px 10px;" onclick="applyAIPreset('ollama')">Ollama (Local)</button>
             </div>
           </div>
           <div class="input-group">
@@ -1314,6 +1395,21 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               <optgroup label="Anthropic">
                 <option value="claude-sonnet-4-20250514">Claude Sonnet</option>
                 <option value="claude-haiku-4-20250506">Claude Haiku</option>
+              </optgroup>
+              <optgroup label="Groq (Gratis)">
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                <option value="llama-3.1-8b-instant">Llama 3.1 8B (Rapido)</option>
+                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                <option value="gemma2-9b-it">Gemma 2 9B</option>
+              </optgroup>
+              <optgroup label="Mistral (Gratis)">
+                <option value="mistral-small-latest">Mistral Small</option>
+                <option value="mistral-medium-latest">Mistral Medium</option>
+                <option value="open-mistral-nemo">Mistral Nemo 12B</option>
+              </optgroup>
+              <optgroup label="Cerebras (Gratis)">
+                <option value="llama-3.3-70b">Llama 3.3 70B</option>
+                <option value="llama-3.1-8b">Llama 3.1 8B</option>
               </optgroup>
               <optgroup label="DeepSeek">
                 <option value="deepseek-chat">DeepSeek Chat</option>
@@ -1346,6 +1442,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           </div>
           <div id="ai-vision-info" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(0,200,150,0.1);border:1px solid rgba(0,200,150,0.3);border-radius:6px;font-size:11px;color:var(--text-muted);">
             &#x1F441; <strong>Vision ativado:</strong> Um grafico de candles (800x450) sera gerado e enviado junto com os indicadores. Usa mais tokens mas permite analise visual de padroes.
+          </div>
+          <div class="input-group" style="margin-top:8px;">
+            <label>Cache IA (minutos) - evita re-analisar moeda recente</label>
+            <input type="number" id="cfg-aiCacheMins" placeholder="15" step="1" min="0" value="15">
           </div>
           <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
             <button class="btn btn-outline" id="btn-test-ai" onclick="doTestAI()">Testar Conexao IA</button>
@@ -1384,6 +1484,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           <div class="input-group">
             <label>Modo de Scan</label>
             <select id="cfg-scanMode" onchange="updateScanModeUI()">
+              <option value="multi">Multi-Scan (todos os filtros)</option>
               <option value="recovery">Recuperacao (moedas em alta)</option>
               <option value="volume">Volume (mais negociadas)</option>
               <option value="rsi">RSI Extremos (sobrevendido/sobrecomprado)</option>
@@ -1521,7 +1622,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
       </div>
       <div class="card-header" style="margin-bottom:10px;">
         <span class="card-title">&#x1F4CB; Registro de Atividades</span>
-        <button class="btn btn-outline btn-sm" onclick="clearLogs()">&#x1F5D1; Limpar</button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span class="log-tag binance" style="font-size:10px; padding:2px 6px; cursor:default;">BINANCE</span><span style="font-size:10px; color:var(--text-muted);">API</span>
+            <span class="log-tag ia" style="font-size:10px; padding:2px 6px; cursor:default;">IA</span><span style="font-size:10px; color:var(--text-muted);">Decisao da IA</span>
+            <span class="log-tag bot" style="font-size:10px; padding:2px 6px; cursor:default;">BOT</span><span style="font-size:10px; color:var(--text-muted);">Score tecnico</span>
+            <span class="log-tag trade" style="font-size:10px; padding:2px 6px; cursor:default;">TRADE</span><span style="font-size:10px; color:var(--text-muted);">Compra/Venda</span>
+            <span class="log-tag erro" style="font-size:10px; padding:2px 6px; cursor:default;">ERRO</span><span style="font-size:10px; color:var(--text-muted);">Falhas</span>
+            <span class="log-tag system" style="font-size:10px; padding:2px 6px; cursor:default;">SISTEMA</span><span style="font-size:10px; color:var(--text-muted);">Geral</span>
+          </div>
+          <button class="btn btn-outline btn-sm" id="log-pause-btn" onclick="toggleLogPause()">&#x23F8; Pausar</button>
+          <span id="log-pause-count" style="display:none; font-size:11px; color:var(--accent); font-weight:600;"></span>
+          <button class="btn btn-outline btn-sm" onclick="clearLogs()">&#x1F5D1; Limpar</button>
+        </div>
       </div>
       <div id="log-container"></div>
     </div>
@@ -2977,7 +3090,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
       <div class="wallet-loading" id="wallet-loading" style="display:none;">Carregando saldos...</div>
 
       <div class="wallet-table-card">
-        <span class="card-title">Ativos com Saldo</span>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span class="card-title" style="margin-bottom:0;">Ativos com Saldo</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:12px; color:var(--text-muted);">Filtro minimo:</label>
+            <input type="number" id="wallet-min-filter" value="0.02" min="0" step="0.01"
+              style="width:80px; padding:4px 8px; background:var(--bg-card); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px; text-align:right;"
+              onchange="renderWalletTable()" oninput="renderWalletTable()">
+            <span style="font-size:12px; color:var(--text-muted);">USDT</span>
+          </div>
+        </div>
         <table class="data-table" id="wallet-table">
           <thead>
             <tr>
@@ -2994,6 +3116,24 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
         </table>
       </div>
 
+    </div>
+
+    <!-- ==================== CHAT TAB ==================== -->
+    <div class="tab-panel chat-panel" data-tab-panel="chat">
+      <div class="chat-header">
+        <span class="chat-title">Chat com IA - Especialista em Trade</span>
+        <button class="btn btn-sm btn-outline" onclick="clearChatHistory()" title="Limpar historico">Limpar</button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-welcome">
+          <div class="chat-welcome-icon">&#x1F916;</div>
+          <div class="chat-welcome-text">Ola! Sou seu assistente especialista em trading na Binance.<br>Pergunte sobre analise tecnica, estrategias, gestao de risco ou qualquer duvida sobre cripto.</div>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="Digite sua pergunta sobre trading..." rows="1" onkeydown="chatInputKeydown(event)"></textarea>
+        <button class="btn btn-accent chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">Enviar</button>
+      </div>
     </div>
 
     <!-- COIN HISTORY MODAL -->
@@ -3091,7 +3231,10 @@ var state = {
     baseLocked: '0.00',
     quoteFree: '0.00',
     quoteLocked: '0.00'
-  }
+  },
+  aiKeys: { openai: '', groq: '', mistral: '', cerebras: '', deepseek: '' },
+  chatHistory: [],
+  chatWaiting: false
 };
 
 // =====================================================================
@@ -3178,6 +3321,8 @@ function handleDelphiMessage(msg) {
     case 'aiStats':           onAIStats(data); break;
     case 'coinHistoryData':   onCoinHistoryData(data); break;
     case 'allSymbols':        onAllSymbols(data); break;
+    case 'chatResponse':      onChatResponse(data); break;
+    case 'chatToolCall':      onChatToolCall(data); break;
     default: break;
   }
 }
@@ -3367,9 +3512,18 @@ function onLoadConfig(data) {
     }
   }
   setInputVal('cfg-aiBaseURL', data.aiBaseURL);
+  setInputVal('cfg-aiCacheMins', data.aiCacheMins ?? 15);
+  // Restaura keys por provedor
+  if (!state.aiKeys) state.aiKeys = {};
+  state.aiKeys.openai = data.aiKeyOpenai || '';
+  state.aiKeys.groq = data.aiKeyGroq || '';
+  state.aiKeys.mistral = data.aiKeyMistral || '';
+  state.aiKeys.cerebras = data.aiKeyCerebras || '';
+  state.aiKeys.deepseek = data.aiKeyDeepseek || '';
   var visionChk = document.getElementById('cfg-aiVision');
   if (visionChk) visionChk.checked = !!data.aiVision;
   onAIModelChange();
+  highlightAIPreset(detectAIProvider());
   setInputVal('cfg-tradeAmount', data.tradeAmount);
   setInputVal('cfg-trailingStop', data.trailingStop);
   setInputVal('cfg-takeProfit', data.takeProfit);
@@ -3415,6 +3569,7 @@ function updateRecoveryLabel() {
   var title = document.getElementById('scanner-title');
 
   var labels = {
+    'multi':     { col: 'Confluencias', title: '&#x1F529; Multi-Scan (Confluencia)' },
     'recovery':  { col: 'Variacao', title: '&#x1F3C6; Top Recovery Coins' },
     'volume':    { col: 'Variacao 24h', title: '&#x1F4CA; Top Coins por Volume' },
     'rsi':       { col: 'RSI', title: '&#x1F534; RSI Extremos' },
@@ -3499,6 +3654,11 @@ function doRegisterPosition() {
   if (!sym) { alert('Selecione uma moeda primeiro'); return; }
   if (!confirm('Registrar posicao para ' + sym + '?\n\nO bot vai buscar seu saldo atual e preco, e registrar como posicao aberta para monitoramento (stop loss, take profit, IA).')) return;
   sendToDelphi('registerPosition', { symbol: sym });
+}
+
+function sendChartToTelegram() {
+  if (!state.selectedCoin) { alert('Selecione uma moeda primeiro'); return; }
+  sendToDelphi('sendChartTelegram', { symbol: state.selectedCoin });
 }
 
 function doStartBot() {
@@ -3676,19 +3836,71 @@ function onAIModelChange() {
   info.style.display = visionEnabled ? '' : 'none';
 }
 
+function highlightAIPreset(preset) {
+  document.querySelectorAll('.ai-preset-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-preset') === preset);
+  });
+}
+
+// Detecta provedor atual pela baseURL
+function detectAIProvider() {
+  var url = getInputVal('cfg-aiBaseURL').toLowerCase();
+  if (url.indexOf('groq.com') >= 0) return 'groq';
+  if (url.indexOf('mistral.ai') >= 0) return 'mistral';
+  if (url.indexOf('cerebras.ai') >= 0) return 'cerebras';
+  if (url.indexOf('deepseek.com') >= 0) return 'deepseek';
+  if (url.indexOf('localhost') >= 0 || url.indexOf('127.0.0.1') >= 0) return 'local';
+  return 'openai';
+}
+
+// Salva key atual no slot do provedor detectado
+function saveCurrentAIKey() {
+  var prov = detectAIProvider();
+  var key = getInputVal('cfg-aiKey');
+  if (key && key !== 'lm-studio' && key !== 'ollama') {
+    if (!state.aiKeys) state.aiKeys = {};
+    state.aiKeys[prov] = key;
+  }
+}
+
 function applyAIPreset(preset) {
   var sel = document.getElementById('cfg-aiModel');
   var url = document.getElementById('cfg-aiBaseURL');
   var key = document.getElementById('cfg-aiKey');
+  if (!state.aiKeys) state.aiKeys = {};
+
+  // Salva key do provedor atual antes de trocar
+  saveCurrentAIKey();
+
   switch (preset) {
     case 'openai':
       sel.value = 'gpt-4o-mini';
       url.value = 'https://api.openai.com/v1';
+      key.value = state.aiKeys.openai || '';
       key.placeholder = 'sk-...';
+      break;
+    case 'groq':
+      sel.value = 'llama-3.1-8b-instant';
+      url.value = 'https://api.groq.com/openai/v1';
+      key.value = state.aiKeys.groq || '';
+      key.placeholder = 'gsk_...';
+      break;
+    case 'mistral':
+      sel.value = 'mistral-small-latest';
+      url.value = 'https://api.mistral.ai/v1';
+      key.value = state.aiKeys.mistral || '';
+      key.placeholder = 'api key mistral...';
+      break;
+    case 'cerebras':
+      sel.value = 'llama-3.3-70b';
+      url.value = 'https://api.cerebras.ai/v1';
+      key.value = state.aiKeys.cerebras || '';
+      key.placeholder = 'csk-...';
       break;
     case 'deepseek':
       sel.value = 'deepseek-chat';
       url.value = 'https://api.deepseek.com/v1';
+      key.value = state.aiKeys.deepseek || '';
       key.placeholder = 'sk-...';
       break;
     case 'lmstudio':
@@ -3704,6 +3916,7 @@ function applyAIPreset(preset) {
       break;
   }
   onAIModelChange();
+  highlightAIPreset(preset);
 }
 
 function getEffectiveAIModel() {
@@ -3713,6 +3926,9 @@ function getEffectiveAIModel() {
 }
 
 function doSaveConfig() {
+  // Salva key atual no slot do provedor antes de gravar
+  saveCurrentAIKey();
+  if (!state.aiKeys) state.aiKeys = {};
   var cfg = {
     apiKeyTest: getInputVal('cfg-apiKeyTest'),
     secretKeyTest: getInputVal('cfg-secretKeyTest'),
@@ -3723,6 +3939,12 @@ function doSaveConfig() {
     aiModel: getEffectiveAIModel(),
     aiVision: document.getElementById('cfg-aiVision').checked,
     aiBaseURL: getInputVal('cfg-aiBaseURL'),
+    aiCacheMins: intVal(getInputVal('cfg-aiCacheMins'), 15),
+    aiKeyOpenai: state.aiKeys.openai || '',
+    aiKeyGroq: state.aiKeys.groq || '',
+    aiKeyMistral: state.aiKeys.mistral || '',
+    aiKeyCerebras: state.aiKeys.cerebras || '',
+    aiKeyDeepseek: state.aiKeys.deepseek || '',
     tradeAmount: numVal(getInputVal('cfg-tradeAmount'), 10),
     trailingStop: numVal(getInputVal('cfg-trailingStop'), 3),
     takeProfit: numVal(getInputVal('cfg-takeProfit'), 3),
@@ -4001,12 +4223,30 @@ function renderTrades() {
 // =====================================================================
 // LOG
 // =====================================================================
+var _logPaused = false;
+var _logBuffer = [];
+
 function appendLog(tag, message, time) {
+  var timeStr = time || formatTime(new Date());
+
+  if (_logPaused) {
+    _logBuffer.push({ tag: tag, message: message, time: timeStr });
+    var countEl = document.getElementById('log-pause-count');
+    if (countEl) {
+      countEl.style.display = '';
+      countEl.textContent = _logBuffer.length + ' pendente' + (_logBuffer.length !== 1 ? 's' : '');
+    }
+    return;
+  }
+
+  _appendLogEntry(tag, message, timeStr);
+}
+
+function _appendLogEntry(tag, message, timeStr) {
   var container = document.getElementById('log-container');
   var entry = document.createElement('div');
   entry.className = 'log-entry';
 
-  var timeStr = time || formatTime(new Date());
   var tagLower = (tag || 'system').toLowerCase();
 
   entry.innerHTML =
@@ -4014,21 +4254,47 @@ function appendLog(tag, message, time) {
     '<span class="log-tag ' + escapeAttr(tagLower) + '">' + escapeHtml(tag || 'SYSTEM') + '</span>' +
     '<span class="log-message">' + escapeHtml(message || '') + '</span>';
 
-  // Auto-scroll so se ja estiver perto do fundo (nao atrapalha leitura)
   var isNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 60;
   container.appendChild(entry);
   if (isNearBottom) {
     container.scrollTop = container.scrollHeight;
   }
 
-  // Keep max 500 log entries
   while (container.children.length > 500) {
     container.removeChild(container.firstChild);
   }
 }
 
+function toggleLogPause() {
+  _logPaused = !_logPaused;
+  var btn = document.getElementById('log-pause-btn');
+  var countEl = document.getElementById('log-pause-count');
+
+  if (_logPaused) {
+    btn.innerHTML = '&#x25B6; Retomar';
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = 'var(--accent)';
+  } else {
+    // Flush buffer
+    for (var i = 0; i < _logBuffer.length; i++) {
+      _appendLogEntry(_logBuffer[i].tag, _logBuffer[i].message, _logBuffer[i].time);
+    }
+    _logBuffer = [];
+    btn.innerHTML = '&#x23F8; Pausar';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    if (countEl) countEl.style.display = 'none';
+    // Scroll to bottom after flush
+    var container = document.getElementById('log-container');
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
 function clearLogs() {
   document.getElementById('log-container').innerHTML = '';
+  _logBuffer = [];
+  var countEl = document.getElementById('log-pause-count');
+  if (countEl) countEl.style.display = 'none';
 }
 
 // =====================================================================
@@ -4605,28 +4871,40 @@ function drawWalletMiniChart() {
   ctx.fill();
 }
 
-function onWalletData(data) {
-  var totalUSDT = data.totalUSDT || 0;
-  var balances = data.balances || [];
+var _walletCache = { totalUSDT: 0, balances: [] };
 
-  setElText('wallet-total-usdt', '$' + totalUSDT.toLocaleString('en-US', {
+function onWalletData(data) {
+  _walletCache.totalUSDT = data.totalUSDT || 0;
+  _walletCache.balances = (data.balances || []).slice();
+  _walletCache.balances.sort(function(a, b) { return (b.valueUSDT || 0) - (a.valueUSDT || 0); });
+
+  setElText('wallet-total-usdt', '$' + _walletCache.totalUSDT.toLocaleString('en-US', {
     minimumFractionDigits: 2, maximumFractionDigits: 2
   }));
-  setElText('wallet-asset-count', balances.length + ' ativo' + (balances.length !== 1 ? 's' : ''));
+  setElText('wallet-asset-count', _walletCache.balances.length + ' ativo' + (_walletCache.balances.length !== 1 ? 's' : ''));
 
-  balances.sort(function(a, b) { return (b.valueUSDT || 0) - (a.valueUSDT || 0); });
+  renderWalletTable();
+  drawWalletMiniChart();
+}
 
+function renderWalletTable() {
   var tbody = document.getElementById('wallet-tbody');
   if (!tbody) return;
 
-  if (balances.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="placeholder-text">Nenhum ativo com saldo encontrado.</td></tr>';
+  var minFilter = parseFloat(document.getElementById('wallet-min-filter').value) || 0;
+  var totalUSDT = _walletCache.totalUSDT;
+  var balances = _walletCache.balances;
+
+  var filtered = balances.filter(function(b) { return (b.valueUSDT || 0) >= minFilter; });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="placeholder-text">Nenhum ativo acima de $' + minFilter.toFixed(2) + '</td></tr>';
     return;
   }
 
   var html = '';
-  for (var i = 0; i < balances.length; i++) {
-    var b = balances[i];
+  for (var i = 0; i < filtered.length; i++) {
+    var b = filtered[i];
     var total = (b.free || 0) + (b.locked || 0);
     var valueUSDT = b.valueUSDT || 0;
     var pct = totalUSDT > 0 ? (valueUSDT / totalUSDT * 100) : 0;
@@ -4648,8 +4926,8 @@ function onWalletData(data) {
       pct.toFixed(1) + '%)</span></td>';
     html += '</tr>';
   }
+  html += '<tr style="border-top:1px solid var(--border);"><td colspan="4" style="font-size:11px; color:var(--text-muted); text-align:right;">Exibindo ' + filtered.length + ' de ' + balances.length + ' ativos</td><td></td></tr>';
   tbody.innerHTML = html;
-  drawWalletMiniChart();
 }
 
 // =====================================================================
@@ -5327,6 +5605,165 @@ document.addEventListener('keydown', function(e) {
     if (selectorModal && selectorModal.classList.contains('active')) closeCoinSelectorModal();
   }
 });
+
+// =====================================================================
+// CHAT IA
+// =====================================================================
+function sendChatMessage() {
+  var input = document.getElementById('chat-input');
+  var text = input.value.trim();
+  if (!text || state.chatWaiting) return;
+
+  // Add user message to history and UI
+  state.chatHistory.push({ role: 'user', content: text });
+  renderChatMessage('user', text);
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Show typing indicator
+  state.chatWaiting = true;
+  document.getElementById('chat-send-btn').disabled = true;
+  var typingEl = document.createElement('div');
+  typingEl.className = 'chat-typing';
+  typingEl.id = 'chat-typing';
+  typingEl.innerHTML = 'Pensando<span class="chat-typing-dots"></span>';
+  document.getElementById('chat-messages').appendChild(typingEl);
+  scrollChatToBottom();
+
+  // Send to Delphi with full history
+  sendToDelphi('chatMessage', { history: state.chatHistory });
+}
+
+var toolLabels = {
+  'get_price': 'Buscando preco',
+  'get_ticker_24h': 'Buscando dados 24h',
+  'get_top_gainers': 'Buscando maiores altas',
+  'get_top_losers': 'Buscando maiores quedas',
+  'get_technical_indicators': 'Calculando indicadores',
+  'get_klines': 'Buscando candles',
+  'get_open_positions': 'Verificando posicoes',
+  'get_wallet_balance': 'Consultando carteira',
+  'get_trade_history': 'Buscando historico',
+  'get_order_book': 'Analisando livro de ofertas'
+};
+
+function onChatToolCall(data) {
+  var typing = document.getElementById('chat-typing');
+  if (typing) {
+    var toolName = data.tool || '';
+    var label = toolLabels[toolName] || ('Executando ' + toolName);
+    typing.innerHTML = label + '<span class="chat-typing-dots"></span>';
+  }
+}
+
+function onChatResponse(data) {
+  state.chatWaiting = false;
+  document.getElementById('chat-send-btn').disabled = false;
+
+  // Remove typing indicator
+  var typing = document.getElementById('chat-typing');
+  if (typing) typing.remove();
+
+  var content = data.content || '';
+  var isError = content.startsWith('Erro:');
+
+  // Add AI response to history
+  if (!isError) {
+    state.chatHistory.push({ role: 'assistant', content: content });
+  }
+
+  renderChatMessage('ai', content, isError);
+  scrollChatToBottom();
+}
+
+function renderChatMessage(role, content, isError) {
+  var container = document.getElementById('chat-messages');
+
+  // Remove welcome message if present
+  var welcome = container.querySelector('.chat-welcome');
+  if (welcome) welcome.remove();
+
+  var wrapper = document.createElement('div');
+
+  if (role === 'user') {
+    wrapper.className = 'chat-msg chat-msg-user';
+    wrapper.textContent = content;
+  } else {
+    wrapper.className = 'chat-msg chat-msg-ai';
+    if (isError) {
+      wrapper.innerHTML = '<span class="chat-msg-error">' + escapeHtml(content) + '</span>';
+    } else {
+      wrapper.innerHTML = renderMarkdown(content);
+    }
+  }
+
+  // Timestamp
+  var timeEl = document.createElement('div');
+  timeEl.className = 'chat-msg-time';
+  timeEl.textContent = formatTime(new Date());
+  wrapper.appendChild(timeEl);
+
+  container.appendChild(wrapper);
+  scrollChatToBottom();
+}
+
+function renderMarkdown(text) {
+  // Simple markdown rendering
+  var html = escapeHtml(text);
+  // Bold: **text**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic: *text*
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Inline code: `code`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Unordered lists: - item or * item
+  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Ordered lists: 1. item
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Headers: ### text
+  html = html.replace(/^### (.+)$/gm, '<strong style="font-size:14px;">$1</strong>');
+  html = html.replace(/^## (.+)$/gm, '<strong style="font-size:15px;">$1</strong>');
+  // Line breaks to paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  // Clean empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  return html;
+}
+
+function clearChatHistory() {
+  if (state.chatHistory.length === 0) return;
+  if (!confirm('Limpar todo o historico do chat?')) return;
+  state.chatHistory = [];
+  state.chatWaiting = false;
+  document.getElementById('chat-send-btn').disabled = false;
+  document.getElementById('chat-messages').innerHTML =
+    '<div class="chat-welcome">' +
+    '<div class="chat-welcome-icon">&#x1F916;</div>' +
+    '<div class="chat-welcome-text">Ola! Sou seu assistente especialista em trading na Binance.<br>' +
+    'Pergunte sobre analise tecnica, estrategias, gestao de risco ou qualquer duvida sobre cripto.</div>' +
+    '</div>';
+}
+
+function chatInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+  // Auto-resize textarea
+  setTimeout(function() {
+    var el = e.target;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }, 0);
+}
+
+function scrollChatToBottom() {
+  var el = document.getElementById('chat-messages');
+  setTimeout(function() { el.scrollTop = el.scrollHeight; }, 50);
+}
 
 // =====================================================================
 // INITIALIZATION

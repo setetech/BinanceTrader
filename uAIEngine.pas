@@ -20,6 +20,7 @@ type
     FLastPromptTokens: Integer;
     FLastCompletionTokens: Integer;
     FLastTotalTokens: Integer;
+    FLastError: string;
     procedure Log(const Msg: string);
     procedure SetModel(const Value: string);
     function CallLLM(const SystemPrompt, UserPrompt: string;
@@ -27,13 +28,17 @@ type
     function ParseResponse(const Resp: string): TAIAnalysis;
     function BuildPrompt(const Symbol: string; const Ind: TTechnicalIndicators;
       const C: TCandleArray; HasPosition: Boolean; BuyPrice: Double): string;
-    function GenerateChartBase64(const C: TCandleArray): string;
     function StripThinkTags(const S: string): string;
   public
+    function GenerateChartBase64(const C: TCandleArray): string;
     constructor Create(const AApiKey: string; const AModel: string = 'gpt-4o-mini');
     destructor Destroy; override;
     function AnalyzeMarket(const Symbol: string; const Ind: TTechnicalIndicators;
       const C: TCandleArray; HasPosition: Boolean = False; BuyPrice: Double = 0): TAIAnalysis;
+    function Chat(const SystemPrompt: string; const History: TJSONArray): string;
+    function ChatWithTools(const SystemPrompt: string; const History: TJSONArray;
+      const Tools: TJSONArray; OnToolCall: TFunc<string, string, string>;
+      OnToolStatus: TProc<string> = nil): string;
     property ApiKey: string read FApiKey write FApiKey;
     property Model: string read FModel write SetModel;
     property BaseURL: string read FBaseURL write FBaseURL;
@@ -44,6 +49,7 @@ type
     property LastPromptTokens: Integer read FLastPromptTokens;
     property LastCompletionTokens: Integer read FLastCompletionTokens;
     property LastTotalTokens: Integer read FLastTotalTokens;
+    property LastError: string read FLastError;
   end;
 
 implementation
@@ -351,6 +357,7 @@ var
   Ch: TJSONArray;
 begin
   Result := '';
+  FLastError := '';
   FLastPromptTokens := 0;
   FLastCompletionTokens := 0;
   FLastTotalTokens := 0;
@@ -397,8 +404,17 @@ begin
       FHttp.CustomHeaders['Content-Type'] := 'application/json';
       Log('Enviando para ' + FModel + '...');
 
-      Resp := FHttp.Post(FBaseURL + '/chat/completions', Src, nil,
-        [TNameValuePair.Create('Content-Type','application/json')]);
+      try
+        Resp := FHttp.Post(FBaseURL + '/chat/completions', Src, nil,
+          [TNameValuePair.Create('Content-Type','application/json')]);
+      except
+        on E: Exception do
+        begin
+          FLastError := 'Erro conexao: ' + E.Message;
+          Log(FLastError);
+          Exit;
+        end;
+      end;
 
       if Resp.StatusCode = 200 then begin
         RJ := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
@@ -419,10 +435,14 @@ begin
         end;
         if Result <> '' then
           Log('Resposta recebida: ' + IntToStr(Length(Result)) + ' chars')
-        else
-          Log('Resposta vazia do modelo');
+        else begin
+          FLastError := 'Resposta vazia do modelo';
+          Log(FLastError);
+        end;
       end else begin
-        Log('Erro HTTP ' + IntToStr(Resp.StatusCode));
+        FLastError := 'Erro HTTP ' + IntToStr(Resp.StatusCode) + ': ' +
+          Copy(Resp.ContentAsString(TEncoding.UTF8), 1, 200);
+        Log(FLastError);
       end;
     finally Src.Free; end;
   finally Req.Free; end;
@@ -591,6 +611,8 @@ const
     '"reasoning":"explicacao curta","entry_price":0,"stop_loss":0,"take_profit":0}'#13#10 +
     'Regras: RSI<30=sobrevendido, RSI>70=sobrecomprado, MACD acima signal=compra, ' +
     'SMA20>SMA50=alta, preco<BollingerInf=bounce, ATR para stop loss, risco/retorno 1:2 minimo. ' +
+    'Order Book: Imbalance>0.6=pressao compradora, <0.4=pressao vendedora. ' +
+    'Buy/Sell walls indicam suporte/resistencia reais. Spread alto=baixa liquidez. ' +
     'IMPORTANTE: Respeite o contexto de posicao informado. Se nao ha posicao, avalie apenas COMPRA ou HOLD. ' +
     'Se ja ha posicao, avalie apenas VENDA ou HOLD. ' +
     'Seja conservador, prefira HOLD sem sinal claro. ' +
@@ -607,6 +629,8 @@ const
     'SMA20>SMA50=alta, preco<BollingerInf=bounce, ATR para stop loss, risco/retorno 1:2 minimo. ' +
     'Use o grafico para identificar padroes visuais: tendencias, suportes, resistencias, ' +
     'padroes de candles (doji, martelo, engolfo, etc). '#13#10 +
+    'Order Book: Imbalance>0.6=pressao compradora, <0.4=pressao vendedora. ' +
+    'Buy/Sell walls indicam suporte/resistencia reais. Spread alto=baixa liquidez. ' +
     'IMPORTANTE: Respeite o contexto de posicao informado. Se nao ha posicao, avalie apenas COMPRA ou HOLD. ' +
     'Se ja ha posicao, avalie apenas VENDA ou HOLD. ' +
     'Seja conservador, prefira HOLD sem sinal claro. ' +
@@ -649,8 +673,318 @@ begin
     Log(Format('Sinal: %s | Confianca: %.0f%%', [SignalToStr(Result.Signal), Result.Confidence]));
   end else begin
     Result.Signal := tsHold; Result.Confidence := 0;
-    Result.Reasoning := 'Falha na comunicacao com a IA'; Result.Timestamp := Now;
-    Log('Falha na analise');
+    if FLastError <> '' then
+      Result.Reasoning := 'Falha IA: ' + FLastError
+    else
+      Result.Reasoning := 'Falha na comunicacao com a IA';
+    Result.Timestamp := Now;
+    Log('Falha na analise: ' + FLastError);
+  end;
+end;
+
+function TAIEngine.Chat(const SystemPrompt: string; const History: TJSONArray): string;
+var
+  Req: TJSONObject;
+  Msgs: TJSONArray;
+  SM: TJSONObject;
+  Src: TStringStream;
+  Resp: IHTTPResponse;
+  RJ: TJSONValue;
+  Ch: TJSONArray;
+  I: Integer;
+begin
+  Result := '';
+  FLastError := '';
+  FLastPromptTokens := 0;
+  FLastCompletionTokens := 0;
+  FLastTotalTokens := 0;
+  Req := TJSONObject.Create;
+  try
+    Req.AddPair('model', FModel);
+    Req.AddPair('temperature', TJSONNumber.Create(0.7));
+    Req.AddPair('max_tokens', TJSONNumber.Create(1024));
+
+    Msgs := TJSONArray.Create;
+
+    // System prompt
+    SM := TJSONObject.Create;
+    SM.AddPair('role', 'system');
+    SM.AddPair('content', SystemPrompt);
+    Msgs.AddElement(SM);
+
+    // Historico de mensagens (user/assistant alternados)
+    if History <> nil then
+      for I := 0 to History.Count - 1 do
+      begin
+        var Msg := TJSONObject.Create;
+        Msg.AddPair('role', TJSONObject(History.Items[I]).GetValue<string>('role', 'user'));
+        Msg.AddPair('content', TJSONObject(History.Items[I]).GetValue<string>('content', ''));
+        Msgs.AddElement(Msg);
+      end;
+
+    Req.AddPair('messages', Msgs);
+
+    Src := TStringStream.Create(Req.ToJSON, TEncoding.UTF8);
+    try
+      FHttp.CustomHeaders['Authorization'] := 'Bearer ' + FApiKey;
+      FHttp.CustomHeaders['Content-Type'] := 'application/json';
+      Log('Chat: Enviando para ' + FModel + '...');
+
+      try
+        Resp := FHttp.Post(FBaseURL + '/chat/completions', Src, nil,
+          [TNameValuePair.Create('Content-Type','application/json')]);
+      except
+        on E: Exception do
+        begin
+          FLastError := 'Erro conexao: ' + E.Message;
+          Log(FLastError);
+          Exit;
+        end;
+      end;
+
+      if Resp.StatusCode = 200 then begin
+        RJ := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+        if RJ <> nil then begin
+          try
+            Ch := TJSONObject(RJ).GetValue<TJSONArray>('choices');
+            if (Ch <> nil) and (Ch.Count > 0) then
+              Result := TJSONObject(Ch.Items[0]).GetValue<TJSONObject>('message').GetValue<string>('content');
+            var Usage := TJSONObject(RJ).GetValue<TJSONObject>('usage');
+            if Usage <> nil then
+            begin
+              FLastPromptTokens := Usage.GetValue<Integer>('prompt_tokens', 0);
+              FLastCompletionTokens := Usage.GetValue<Integer>('completion_tokens', 0);
+              FLastTotalTokens := Usage.GetValue<Integer>('total_tokens', 0);
+            end;
+          finally RJ.Free; end;
+        end;
+        // Remove think tags se modelo de raciocinio
+        if (Result <> '') and FIsThinkingModel then
+          Result := StripThinkTags(Result);
+        if Result <> '' then
+          Log('Chat: Resposta recebida (' + IntToStr(Length(Result)) + ' chars)')
+        else begin
+          FLastError := 'Resposta vazia do modelo';
+          Log(FLastError);
+        end;
+      end else begin
+        FLastError := 'Erro HTTP ' + IntToStr(Resp.StatusCode) + ': ' +
+          Copy(Resp.ContentAsString(TEncoding.UTF8), 1, 200);
+        Log(FLastError);
+      end;
+    finally Src.Free; end;
+  finally Req.Free; end;
+end;
+
+function TAIEngine.ChatWithTools(const SystemPrompt: string; const History: TJSONArray;
+  const Tools: TJSONArray; OnToolCall: TFunc<string, string, string>;
+  OnToolStatus: TProc<string>): string;
+const
+  MAX_ROUNDS = 5;
+var
+  Msgs: TJSONArray;
+  Src: TStringStream;
+  Resp: IHTTPResponse;
+  RJ: TJSONValue;
+  Ch: TJSONArray;
+  ChoiceObj, MsgObj: TJSONObject;
+  ToolCalls: TJSONArray;
+  ToolCall, FuncObj, ToolResultMsg, AssistantClone: TJSONObject;
+  CallId, FuncName, FuncArgs, ToolResult, FinishReason, Content: string;
+  Round, J: Integer;
+  HasToolCalls: Boolean;
+
+  function BuildRequest: TJSONObject;
+  var ReqObj: TJSONObject; MsgsClone, ToolsClone: TJSONArray; K: Integer;
+  begin
+    ReqObj := TJSONObject.Create;
+    ReqObj.AddPair('model', FModel);
+    ReqObj.AddPair('temperature', TJSONNumber.Create(0.7));
+    ReqObj.AddPair('max_tokens', TJSONNumber.Create(1024));
+    // Clone messages array (Req.Free nao destrua nosso Msgs de trabalho)
+    MsgsClone := TJSONArray.Create;
+    for K := 0 to Msgs.Count - 1 do
+      MsgsClone.AddElement(TJSONValue(Msgs.Items[K].Clone));
+    ReqObj.AddPair('messages', MsgsClone);
+    // Clone tools
+    if (Tools <> nil) and (Tools.Count > 0) then
+    begin
+      ToolsClone := TJSONArray(Tools.Clone);
+      ReqObj.AddPair('tools', ToolsClone);
+    end;
+    Result := ReqObj;
+  end;
+
+begin
+  Result := '';
+  FLastError := '';
+  FLastPromptTokens := 0;
+  FLastCompletionTokens := 0;
+  FLastTotalTokens := 0;
+
+  // Montar array de mensagens inicial
+  Msgs := TJSONArray.Create;
+  try
+    // System prompt
+    var SM := TJSONObject.Create;
+    SM.AddPair('role', 'system');
+    SM.AddPair('content', SystemPrompt);
+    Msgs.AddElement(SM);
+
+    // Historico
+    if History <> nil then
+      for J := 0 to History.Count - 1 do
+        Msgs.AddElement(TJSONValue(History.Items[J].Clone));
+
+    // Loop de tool calls
+    for Round := 1 to MAX_ROUNDS do
+    begin
+      var Req := BuildRequest;
+      try
+        Src := TStringStream.Create(Req.ToJSON, TEncoding.UTF8);
+        try
+          FHttp.CustomHeaders['Authorization'] := 'Bearer ' + FApiKey;
+          FHttp.CustomHeaders['Content-Type'] := 'application/json';
+          Log(Format('Chat tools: Rodada %d, enviando para %s...', [Round, FModel]));
+
+          try
+            Resp := FHttp.Post(FBaseURL + '/chat/completions', Src, nil,
+              [TNameValuePair.Create('Content-Type','application/json')]);
+          except
+            on E: Exception do
+            begin
+              FLastError := 'Erro conexao: ' + E.Message;
+              Log(FLastError);
+              Exit;
+            end;
+          end;
+
+          if Resp.StatusCode <> 200 then
+          begin
+            FLastError := 'Erro HTTP ' + IntToStr(Resp.StatusCode) + ': ' +
+              Copy(Resp.ContentAsString(TEncoding.UTF8), 1, 200);
+            Log(FLastError);
+            Exit;
+          end;
+
+          RJ := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+          if RJ = nil then
+          begin
+            FLastError := 'Resposta invalida da API';
+            Log(FLastError);
+            Exit;
+          end;
+
+          try
+            // Acumular tokens
+            var Usage := TJSONObject(RJ).GetValue<TJSONObject>('usage');
+            if Usage <> nil then
+            begin
+              FLastPromptTokens := FLastPromptTokens + Usage.GetValue<Integer>('prompt_tokens', 0);
+              FLastCompletionTokens := FLastCompletionTokens + Usage.GetValue<Integer>('completion_tokens', 0);
+              FLastTotalTokens := FLastTotalTokens + Usage.GetValue<Integer>('total_tokens', 0);
+            end;
+
+            Ch := TJSONObject(RJ).GetValue<TJSONArray>('choices');
+            if (Ch = nil) or (Ch.Count = 0) then
+            begin
+              FLastError := 'Nenhum choice na resposta';
+              Log(FLastError);
+              Exit;
+            end;
+
+            ChoiceObj := TJSONObject(Ch.Items[0]);
+            FinishReason := ChoiceObj.GetValue<string>('finish_reason', 'stop');
+            MsgObj := ChoiceObj.GetValue<TJSONObject>('message');
+
+            if MsgObj = nil then
+            begin
+              FLastError := 'Sem message no choice';
+              Log(FLastError);
+              Exit;
+            end;
+
+            // Verificar se tem tool_calls
+            HasToolCalls := (FinishReason = 'tool_calls') and
+              (MsgObj.GetValue('tool_calls') <> nil);
+
+            if not HasToolCalls then
+            begin
+              // Resposta final - extrair content
+              Content := MsgObj.GetValue<string>('content', '');
+              if (Content <> '') and FIsThinkingModel then
+                Content := StripThinkTags(Content);
+              Result := Content;
+              if Result <> '' then
+                Log('Chat tools: Resposta final (' + IntToStr(Length(Result)) + ' chars, ' +
+                  IntToStr(Round) + ' rodada(s))')
+              else begin
+                FLastError := 'Resposta vazia do modelo';
+                Log(FLastError);
+              end;
+              Exit;
+            end;
+
+            // Tem tool_calls - processar
+            ToolCalls := MsgObj.GetValue<TJSONArray>('tool_calls');
+            Log(Format('Chat tools: %d tool call(s) na rodada %d', [ToolCalls.Count, Round]));
+
+            // Adicionar a mensagem do assistant (com tool_calls) ao historico
+            AssistantClone := TJSONObject(MsgObj.Clone);
+            AssistantClone.RemovePair('role');
+            AssistantClone.AddPair('role', 'assistant');
+            Msgs.AddElement(AssistantClone);
+
+            // Executar cada tool call e adicionar resultado
+            for J := 0 to ToolCalls.Count - 1 do
+            begin
+              ToolCall := TJSONObject(ToolCalls.Items[J]);
+              CallId := ToolCall.GetValue<string>('id', '');
+              FuncObj := ToolCall.GetValue<TJSONObject>('function');
+              if FuncObj = nil then Continue;
+              FuncName := FuncObj.GetValue<string>('name', '');
+              FuncArgs := FuncObj.GetValue<string>('arguments', '{}');
+
+              Log(Format('Chat tools: Executando %s(%s)', [FuncName, Copy(FuncArgs, 1, 100)]));
+
+              // Notificar UI sobre a tool sendo executada
+              if Assigned(OnToolStatus) then
+                OnToolStatus(FuncName);
+
+              // Executar a funcao via callback
+              try
+                ToolResult := OnToolCall(FuncName, FuncArgs);
+              except
+                on E: Exception do
+                  ToolResult := 'Erro ao executar ' + FuncName + ': ' + E.Message;
+              end;
+
+              Log(Format('Chat tools: %s retornou %d chars', [FuncName, Length(ToolResult)]));
+
+              // Adicionar resultado como mensagem tool
+              ToolResultMsg := TJSONObject.Create;
+              ToolResultMsg.AddPair('role', 'tool');
+              ToolResultMsg.AddPair('tool_call_id', CallId);
+              ToolResultMsg.AddPair('content', ToolResult);
+              Msgs.AddElement(ToolResultMsg);
+            end;
+
+          finally
+            RJ.Free;
+          end;
+        finally
+          Src.Free;
+        end;
+      finally
+        Req.Free;
+      end;
+    end; // for Round
+
+    // Se chegou aqui, atingiu MAX_ROUNDS sem resposta final
+    FLastError := Format('Limite de %d rodadas de tool calls atingido', [MAX_ROUNDS]);
+    Log(FLastError);
+  finally
+    Msgs.Free;
   end;
 end;
 

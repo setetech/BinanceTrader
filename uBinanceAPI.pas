@@ -36,6 +36,7 @@ type
     function Get24hTicker(const Symbol: string): TJSONObject;
     function GetAll24hTickers: TJSONArray;
     function GetAllTickersWindow(const WindowSize: string = '1d'): TJSONArray;
+    function GetOrderBook(const Symbol: string; Limit: Integer = 100): TOrderBookData;
     function GetAISelectSymbols: TArray<string>;
     // Account
     function GetBalance(const Asset: string): TAssetBalance;
@@ -380,6 +381,81 @@ begin
     end;
   finally
     LSymbols.Free;
+  end;
+end;
+
+function TBinanceAPI.GetOrderBook(const Symbol: string; Limit: Integer): TOrderBookData;
+var
+  J: TJSONValue;
+  JObj: TJSONObject;
+  Bids, Asks: TJSONArray;
+  I: Integer;
+  P, Q: Double;
+begin
+  FillChar(Result, SizeOf(Result), 0);
+  Result.Symbol := Symbol;
+  if Limit > 1000 then Limit := 1000;
+
+  J := DoPublicRequest('GET', '/v3/depth', Format('symbol=%s&limit=%d', [Symbol, Limit]));
+  try
+    if (J = nil) or not (J is TJSONObject) then Exit;
+    JObj := TJSONObject(J);
+
+    Bids := nil; Asks := nil;
+    if JObj.FindValue('bids') is TJSONArray then Bids := TJSONArray(JObj.FindValue('bids'));
+    if JObj.FindValue('asks') is TJSONArray then Asks := TJSONArray(JObj.FindValue('asks'));
+
+    // Parse bids
+    if (Bids <> nil) and (Bids.Count > 0) then
+    begin
+      SetLength(Result.Bids, Bids.Count);
+      for I := 0 to Bids.Count - 1 do
+      begin
+        P := StrToFloatDef(TJSONArray(Bids.Items[I]).Items[0].Value, 0, FmtDot);
+        Q := StrToFloatDef(TJSONArray(Bids.Items[I]).Items[1].Value, 0, FmtDot);
+        Result.Bids[I].Price := P;
+        Result.Bids[I].Quantity := Q;
+        Result.BidTotal := Result.BidTotal + (P * Q);
+        if (P * Q) > Result.BiggestBidWall then
+        begin
+          Result.BiggestBidWall := P * Q;
+          Result.BiggestBidWallPrice := P;
+        end;
+      end;
+      Result.BestBid := Result.Bids[0].Price;
+    end;
+
+    // Parse asks
+    if (Asks <> nil) and (Asks.Count > 0) then
+    begin
+      SetLength(Result.Asks, Asks.Count);
+      for I := 0 to Asks.Count - 1 do
+      begin
+        P := StrToFloatDef(TJSONArray(Asks.Items[I]).Items[0].Value, 0, FmtDot);
+        Q := StrToFloatDef(TJSONArray(Asks.Items[I]).Items[1].Value, 0, FmtDot);
+        Result.Asks[I].Price := P;
+        Result.Asks[I].Quantity := Q;
+        Result.AskTotal := Result.AskTotal + (P * Q);
+        if (P * Q) > Result.BiggestAskWall then
+        begin
+          Result.BiggestAskWall := P * Q;
+          Result.BiggestAskWallPrice := P;
+        end;
+      end;
+      Result.BestAsk := Result.Asks[0].Price;
+    end;
+
+    // Calcula imbalance: bid/(bid+ask) - 0.5=neutro
+    if (Result.BidTotal + Result.AskTotal) > 0 then
+      Result.Imbalance := Result.BidTotal / (Result.BidTotal + Result.AskTotal)
+    else
+      Result.Imbalance := 0.5;
+
+    // Calcula spread %
+    if Result.BestBid > 0 then
+      Result.Spread := ((Result.BestAsk - Result.BestBid) / Result.BestBid) * 100;
+  finally
+    J.Free;
   end;
 end;
 
