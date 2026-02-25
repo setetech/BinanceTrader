@@ -520,6 +520,10 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.data-table th.sortable { cursor: pointer; user-select: none; }
+.data-table th.sortable:hover { color: var(--accent); }
+.data-table th.sort-asc::after { content: ' \u25B2'; font-size: 10px; color: var(--accent); }
+.data-table th.sort-desc::after { content: ' \u25BC'; font-size: 10px; color: var(--accent); }
 
 .data-table td {
   padding: 10px 12px;
@@ -1119,16 +1123,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           <table class="data-table" id="coins-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Moeda</th>
-                <th>Preco</th>
-                <th id="th-variation">Variacao 24h</th>
-                <th>Volume</th>
+                <th class="sortable" data-sort="index" onclick="sortCoinsBy('index')">#</th>
+                <th class="sortable" data-sort="symbol" onclick="sortCoinsBy('symbol')">Moeda</th>
+                <th class="sortable" data-sort="price" onclick="sortCoinsBy('price')">Preco</th>
+                <th class="sortable" data-sort="change" id="th-variation" onclick="sortCoinsBy('change')">Variacao 24h</th>
+                <th class="sortable" data-sort="volume" onclick="sortCoinsBy('volume')">Volume</th>
+                <th class="sortable" data-sort="confidence" onclick="sortCoinsBy('confidence')">Confianca IA</th>
                 <th>Acao</th>
               </tr>
             </thead>
             <tbody id="coins-tbody">
-              <tr><td colspan="6" class="placeholder-text">Clique em "Scan Now" para buscar as moedas com melhor recuperacao.</td></tr>
+              <tr><td colspan="7" class="placeholder-text">Clique em "Scan Now" para buscar as moedas com melhor recuperacao.</td></tr>
             </tbody>
           </table>
         </div>
@@ -3344,6 +3349,8 @@ if (window.chrome && window.chrome.webview) {
 function onTopCoins(data) {
   var coins = data.coins || [];
   state.coins = coins;
+  coinsOriginalOrder = coins.slice();  // preserva ordem original do scan
+  if (coinsSortField) applyCoinSort();  // reaplica ordenacao sem alterar direcao
   renderCoinsTable();
   document.getElementById('last-scan-time').textContent = 'Ultimo scan: ' + formatTime(new Date());
   document.getElementById('scan-progress-bar').textContent = '';
@@ -3371,6 +3378,16 @@ function onUpdateIndicators(data) {
 function onUpdateSignal(data) {
   state.signal = data;
   renderSignal();
+  // Atualiza confianca da moeda selecionada no grid
+  if (state.selectedCoin && data.confidence != null) {
+    for (var i = 0; i < state.coins.length; i++) {
+      if (state.coins[i].symbol === state.selectedCoin) {
+        state.coins[i].aiConfidence = parseFloat(data.confidence);
+        renderCoinsTable();
+        break;
+      }
+    }
+  }
 }
 
 function onUpdateBalance(data) {
@@ -4029,10 +4046,85 @@ function selectCoinUI(symbol) {
   renderCoinsTable();
 }
 
+// Sort state for coins table
+var coinsSortField = null;  // null = original order
+var coinsSortDir = 'desc';  // 'asc' or 'desc'
+var coinsOriginalOrder = [];  // preserva a ordem original do scan
+
+function applyCoinSort() {
+  if (!coinsSortField) return;
+  var field = coinsSortField;
+  state.coins.sort(function(a, b) {
+    var va, vb;
+    switch (field) {
+      case 'index':
+        va = coinsOriginalOrder.indexOf(a);
+        vb = coinsOriginalOrder.indexOf(b);
+        break;
+      case 'symbol':
+        va = a.symbol || '';
+        vb = b.symbol || '';
+        return coinsSortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      case 'price':
+        va = parseFloat(a.price) || 0;
+        vb = parseFloat(b.price) || 0;
+        break;
+      case 'change':
+        va = parseFloat(a.changePercent) || 0;
+        vb = parseFloat(b.changePercent) || 0;
+        break;
+      case 'volume':
+        va = parseFloat(a.quoteVolume || a.volume) || 0;
+        vb = parseFloat(b.quoteVolume || b.volume) || 0;
+        break;
+      case 'confidence':
+        va = parseFloat(a.aiConfidence) >= 0 ? parseFloat(a.aiConfidence) : -1;
+        vb = parseFloat(b.aiConfidence) >= 0 ? parseFloat(b.aiConfidence) : -1;
+        break;
+      default:
+        va = 0; vb = 0;
+    }
+    if (coinsSortDir === 'asc') return va - vb;
+    return vb - va;
+  });
+}
+
+function updateSortHeaders() {
+  var ths = document.querySelectorAll('#coins-table th.sortable');
+  for (var i = 0; i < ths.length; i++) {
+    ths[i].classList.remove('sort-asc', 'sort-desc');
+    if (coinsSortField && ths[i].getAttribute('data-sort') === coinsSortField) {
+      ths[i].classList.add(coinsSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  }
+}
+
+function sortCoinsBy(field) {
+  if (coinsSortField === field) {
+    if (coinsSortDir === 'desc') coinsSortDir = 'asc';
+    else { coinsSortField = null; coinsSortDir = 'desc'; }  // terceiro click = reset
+  } else {
+    coinsSortField = field;
+    coinsSortDir = 'desc';
+  }
+
+  updateSortHeaders();
+
+  // Se resetou, restaura ordem original
+  if (!coinsSortField) {
+    state.coins = coinsOriginalOrder.slice();
+    renderCoinsTable();
+    return;
+  }
+
+  applyCoinSort();
+  renderCoinsTable();
+}
+
 function renderCoinsTable() {
   var tbody = document.getElementById('coins-tbody');
   if (state.coins.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="placeholder-text">Clique em "Scan Now" para buscar moedas.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="placeholder-text">Clique em "Scan Now" para buscar moedas.</td></tr>';
     return;
   }
 
@@ -4074,6 +4166,13 @@ function renderCoinsTable() {
     html += '<td>' + formatPrice(coin.price) + '</td>';
     html += '<td class="' + metricClass + '">' + metricText + '</td>';
     html += '<td>' + formatVolume(coin.quoteVolume || coin.volume) + '</td>';
+    var conf = parseFloat(coin.aiConfidence);
+    if (conf >= 0) {
+      var confColor = conf >= 70 ? 'var(--green)' : (conf >= 50 ? 'var(--accent)' : 'var(--red)');
+      html += '<td style="color:' + confColor + ';font-weight:600;">' + conf.toFixed(0) + '%</td>';
+    } else {
+      html += '<td style="color:var(--text-muted);">--</td>';
+    }
     html += '<td><button class="btn btn-accent btn-sm" onclick="event.stopPropagation();doSelectCoin(\'' + escapeAttr(coin.symbol) + '\')">Selecionar</button></td>';
     html += '</tr>';
   }

@@ -187,7 +187,7 @@ begin
   FLastTradeTime := TDictionary<string, TDateTime>.Create;
   FSymbolFirstEntry := TDictionary<string, TDateTime>.Create;
   FLateralBlacklist := TDictionary<string, TDateTime>.Create;
-  FAICache := TDictionary<string, TAIAnalysis>.Create;
+  FAICache := TDictionary<string, TAIAnalysis>.Create;  // Sera preenchido do DB apos FDB.Create
   FOptimizer := nil;
   FOptimizing := False;
 
@@ -250,6 +250,9 @@ begin
   // Carregar posicoes abertas do banco
   FreeAndNil(FOpenPositions);
   FOpenPositions := FDB.LoadPositions;
+  // Carregar cache de analises IA do banco
+  FreeAndNil(FAICache);
+  FAICache := FDB.LoadAICache;
   // Inicializa FirstEntry para posicoes carregadas do banco
   for var PI := 0 to FOpenPositions.Count - 1 do
     if not FSymbolFirstEntry.ContainsKey(FOpenPositions[PI].Symbol) then
@@ -1776,6 +1779,7 @@ var
   A: TJSONArray;
   I: Integer;
   C: TJSONObject;
+  LCached: TAIAnalysis;
 begin
   D := TJSONObject.Create;
   A := TJSONArray.Create;
@@ -1790,6 +1794,10 @@ begin
     C.AddPair('low', TJSONNumber.Create(FTopCoins[I].LowPrice));
     C.AddPair('quoteVolume', TJSONNumber.Create(FTopCoins[I].QuoteVolume));
     C.AddPair('scanMetric', TJSONNumber.Create(FTopCoins[I].ScanMetric));
+    if FAICache.TryGetValue(FTopCoins[I].Symbol, LCached) then
+      C.AddPair('aiConfidence', TJSONNumber.Create(LCached.Confidence))
+    else
+      C.AddPair('aiConfidence', TJSONNumber.Create(-1));
     A.AddElement(C);
   end;
   D.AddPair('coins', A);
@@ -1943,13 +1951,83 @@ begin
         FLastAnalysis := LAnalysis;
 
         TThread.Queue(nil, procedure
-        var DA: TJSONObject;
+        var DA: TJSONObject; LAmt: Double;
         begin
           SendSignal;
           AddLog('Bot', Format('%s -> Sinal: %s | Confianca: %.0f%%',
             [Symbol, SignalToStr(LAnalysis.Signal), LAnalysis.Confidence]));
           // Atualiza cache para reutilizar no ciclo do bot
           FAICache.AddOrSetValue(Symbol, LAnalysis);
+          FDB.SaveAIAnalysis(Symbol, LAnalysis);
+
+          // Auto-trade ao selecionar moeda
+          if GetCfgBool('autoTrade', False) and FBotRunning then
+          begin
+            if LAnalysis.Confidence >= GetCfgDbl('minConfidence', 70) then
+            begin
+              // Verifica blacklist
+              var LBlacklistTime: TDateTime;
+              if FLateralBlacklist.TryGetValue(Symbol, LBlacklistTime) then
+              begin
+                AddLog('Bot', Format('%s: BLOQUEADO (vendido por lateralizacao)', [Symbol]));
+              end
+              else
+              begin
+                // Verifica cooldown
+                var LCooldownMin: Double := GetCfgDbl('tradeCooldown', 30);
+                var LLastTime: TDateTime;
+                var LInCooldown: Boolean := False;
+                if FLastTradeTime.TryGetValue(Symbol, LLastTime) then
+                begin
+                  var LElapsedMin: Double := MinutesBetween(Now, LLastTime) + (SecondsBetween(Now, LLastTime) mod 60) / 60.0;
+                  if LElapsedMin < LCooldownMin then
+                  begin
+                    LInCooldown := True;
+                    AddLog('Bot', Format('%s: Cooldown ativo (%.0f/%.0f min)',
+                      [Symbol, LElapsedMin, LCooldownMin]));
+                  end;
+                end;
+
+                if not LInCooldown then
+                begin
+                  // Verifica posicao aberta
+                  var LHasPosition: Boolean := False;
+                  for var PI := 0 to FOpenPositions.Count - 1 do
+                    if FOpenPositions[PI].Symbol = Symbol then
+                    begin LHasPosition := True; Break; end;
+
+                  if (LAnalysis.Signal in [tsStrongBuy, tsBuy]) and LHasPosition then
+                    AddLog('Bot', Symbol + ': Ja possui posicao aberta, aguardando sinal de venda')
+                  else if (LAnalysis.Signal in [tsStrongSell, tsSell]) and not LHasPosition then
+                    AddLog('Bot', Symbol + ': Sem posicao aberta para vender')
+                  else
+                  begin
+                    LAmt := GetCfgDbl('tradeAmount', 100);
+                    case LAnalysis.Signal of
+                      tsStrongBuy, tsBuy:
+                      begin
+                        AddLog('Trade', Format('AUTO-COMPRA %s | Motivo: %s', [Symbol, LAnalysis.Reasoning]));
+                        DoBuy(LAmt);
+                        FLastTradeTime.AddOrSetValue(Symbol, Now);
+                      end;
+                      tsStrongSell, tsSell:
+                      begin
+                        AddLog('Trade', Format('AUTO-VENDA %s | Motivo: %s', [Symbol, LAnalysis.Reasoning]));
+                        DoSell(LAmt);
+                        FLastTradeTime.AddOrSetValue(Symbol, Now);
+                      end;
+                    else
+                      AddLog('Bot', Symbol + ': HOLD - sem sinal claro');
+                    end;
+                  end;
+                end;
+              end;
+            end
+            else
+              AddLog('Bot', Format('%s: Confianca %.0f%% < min %.0f%% - sem trade',
+                [Symbol, LAnalysis.Confidence, GetCfgDbl('minConfidence', 70)]));
+          end;
+
           FAnalyzing := False;
           DA := TJSONObject.Create;
           DA.AddPair('active', TJSONBool.Create(False));
@@ -2116,6 +2194,10 @@ begin
         AddLog('Bot', Format('%s -> Sinal: %s | Confianca: %.0f%%',
           [LSymbol, SignalToStr(LAnalysis.Signal), LAnalysis.Confidence]));
         AddLog('Bot', 'Motivo: ' + LAnalysis.Reasoning);
+
+        // Salva no cache e no banco
+        FAICache.AddOrSetValue(LSymbol, LAnalysis);
+        FDB.SaveAIAnalysis(LSymbol, LAnalysis);
 
         // Auto-trade (verifica posicoes reais, cooldown e confianca)
         if GetCfgBool('autoTrade', False) and FBotRunning then
@@ -2588,6 +2670,10 @@ begin
     for var PIdx := 0 to FOpenPositions.Count - 1 do
       if not FSymbolFirstEntry.ContainsKey(FOpenPositions[PIdx].Symbol) then
         FSymbolFirstEntry.AddOrSetValue(FOpenPositions[PIdx].Symbol, FOpenPositions[PIdx].BuyTime);
+
+    // Recarregar cache IA do novo banco
+    FreeAndNil(FAICache);
+    FAICache := FDB.LoadAICache;
 
     // Recarregar trades do novo banco e enviar ao JS
     LTradesArr := FDB.LoadTrades;
@@ -3864,6 +3950,7 @@ begin
               Inc(FAITotalTimeMs, LElapsedMs);
               SendAIStats;
               FAICache.AddOrSetValue(LSymbol, LAnalysis);
+              FDB.SaveAIAnalysis(LSymbol, LAnalysis);
             end);
           end;
         end

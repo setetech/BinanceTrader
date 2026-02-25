@@ -31,6 +31,9 @@ type
     // Wallet snapshots
     procedure SaveWalletSnapshot(TotalUSDT: Double; Timestamp: TDateTime);
     function LoadWalletSnapshots(MaxRecords: Integer = 500): TJSONArray;
+    // AI cache
+    procedure SaveAIAnalysis(const Symbol: string; const Analysis: TAIAnalysis);
+    function LoadAICache: TDictionary<string, TAIAnalysis>;
   end;
 
 implementation
@@ -105,6 +108,19 @@ begin
       '  id INTEGER PRIMARY KEY AUTOINCREMENT,' +
       '  timestamp TEXT NOT NULL,' +
       '  total_usdt REAL NOT NULL' +
+      ')';
+    Q.Execute;
+
+    Q.SQL.Text :=
+      'CREATE TABLE IF NOT EXISTS ai_cache (' +
+      '  symbol TEXT PRIMARY KEY,' +
+      '  signal TEXT NOT NULL,' +
+      '  confidence REAL NOT NULL,' +
+      '  reasoning TEXT,' +
+      '  entry REAL,' +
+      '  stop_loss REAL,' +
+      '  take_profit REAL,' +
+      '  timestamp TEXT NOT NULL' +
       ')';
     Q.Execute;
   finally
@@ -340,6 +356,66 @@ begin
       Obj.AddPair('timestamp', Q.FieldByName('timestamp').AsString);
       Obj.AddPair('totalUSDT', TJSONNumber.Create(Q.FieldByName('total_usdt').AsFloat));
       Result.AddElement(Obj);
+      Q.Next;
+    end;
+  finally
+    Q.Free;
+  end;
+end;
+
+procedure TDatabase.SaveAIAnalysis(const Symbol: string; const Analysis: TAIAnalysis);
+var
+  Q: TUniQuery;
+begin
+  Q := TUniQuery.Create(nil);
+  try
+    Q.Connection := FConn;
+    Q.SQL.Text :=
+      'INSERT OR REPLACE INTO ai_cache (symbol, signal, confidence, reasoning, entry, stop_loss, take_profit, timestamp) ' +
+      'VALUES (:sym, :sig, :conf, :reason, :entry, :sl, :tp, :ts)';
+    Q.ParamByName('sym').AsString := Symbol;
+    Q.ParamByName('sig').AsString := SignalToStrEN(Analysis.Signal);
+    Q.ParamByName('conf').AsFloat := Analysis.Confidence;
+    Q.ParamByName('reason').AsString := Analysis.Reasoning;
+    Q.ParamByName('entry').AsFloat := Analysis.SuggestedEntry;
+    Q.ParamByName('sl').AsFloat := Analysis.SuggestedStopLoss;
+    Q.ParamByName('tp').AsFloat := Analysis.SuggestedTakeProfit;
+    Q.ParamByName('ts').AsString := FormatDateTime('yyyy-mm-dd hh:nn:ss', Analysis.Timestamp);
+    Q.Execute;
+  finally
+    Q.Free;
+  end;
+end;
+
+function TDatabase.LoadAICache: TDictionary<string, TAIAnalysis>;
+var
+  Q: TUniQuery;
+  A: TAIAnalysis;
+  Fmt: TFormatSettings;
+begin
+  Fmt := TFormatSettings.Create;
+  Fmt.DateSeparator := '-';
+  Fmt.TimeSeparator := ':';
+  Fmt.ShortDateFormat := 'yyyy-mm-dd';
+  Fmt.ShortTimeFormat := 'hh:nn:ss';
+
+  Result := TDictionary<string, TAIAnalysis>.Create;
+  Q := TUniQuery.Create(nil);
+  try
+    Q.Connection := FConn;
+    Q.SQL.Text := 'SELECT * FROM ai_cache';
+    Q.Open;
+    while not Q.Eof do
+    begin
+      A := Default(TAIAnalysis);
+      A.Signal := StrENToSignal(Q.FieldByName('signal').AsString);
+      A.Confidence := Q.FieldByName('confidence').AsFloat;
+      A.Reasoning := Q.FieldByName('reasoning').AsString;
+      A.SuggestedEntry := Q.FieldByName('entry').AsFloat;
+      A.SuggestedStopLoss := Q.FieldByName('stop_loss').AsFloat;
+      A.SuggestedTakeProfit := Q.FieldByName('take_profit').AsFloat;
+      A.Timestamp := StrToDateTimeDef(Q.FieldByName('timestamp').AsString, Now, Fmt);
+      Result.AddOrSetValue(Q.FieldByName('symbol').AsString, A);
       Q.Next;
     end;
   finally

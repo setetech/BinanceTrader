@@ -97,6 +97,7 @@ type
 
   function SignalToStr(S: TTradeSignal): string;
   function SignalToStrEN(S: TTradeSignal): string;
+  function StrENToSignal(const S: string): TTradeSignal;
   function OrderSideToStr(S: TOrderSide): string;
   function OrderTypeToStr(T: TOrderType): string;
 
@@ -163,6 +164,15 @@ begin
     tsSell:       Result := 'SELL';
     tsStrongSell: Result := 'STRONG_SELL';
   end;
+end;
+
+function StrENToSignal(const S: string): TTradeSignal;
+begin
+  if S = 'STRONG_BUY' then Result := tsStrongBuy
+  else if S = 'BUY' then Result := tsBuy
+  else if S = 'SELL' then Result := tsSell
+  else if S = 'STRONG_SELL' then Result := tsStrongSell
+  else Result := tsHold;
 end;
 
 function OrderSideToStr(S: TOrderSide): string;
