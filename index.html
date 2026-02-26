@@ -5146,11 +5146,12 @@ function drawWalletMiniChart() {
   ctx.fill();
 }
 
-var _walletCache = { totalUSDT: 0, balances: [] };
+var _walletCache = { totalUSDT: 0, balances: [], positions: {} };
 
 function onWalletData(data) {
   _walletCache.totalUSDT = data.totalUSDT || 0;
   _walletCache.balances = (data.balances || []).slice();
+  _walletCache.positions = data.positions || {};
   _walletCache.balances.sort(function(a, b) { return (b.valueUSDT || 0) - (a.valueUSDT || 0); });
 
   setElText('wallet-total-usdt', '$' + _walletCache.totalUSDT.toLocaleString('en-US', {
@@ -5195,10 +5196,23 @@ function renderWalletTable() {
     html += '<td>' + formatNum(b.free) + '</td>';
     html += '<td>' + formatNum(b.locked) + '</td>';
     html += '<td style="font-weight:600;">' + formatNum(total) + '</td>';
+    // Mostra P&L real se tem posicao rastreada, senao mostra % da carteira
+    var posInfo = _walletCache.positions[b.asset];
+    var pctLabel = '';
+    var pctColor = 'var(--text-muted)';
+    if (posInfo && posInfo.avgPrice > 0 && !isStable) {
+      var currentPrice = total > 0 ? (valueUSDT / total) : 0;
+      var pnlPct = currentPrice > 0 ? ((currentPrice - posInfo.avgPrice) / posInfo.avgPrice) * 100 : 0;
+      var pnlColor = pnlPct >= 0 ? 'var(--green)' : 'var(--red)';
+      pctLabel = '<span style="font-size:10px; color:' + pnlColor + '; margin-left:6px;">(' +
+        (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(1) + '%)</span>';
+    } else {
+      pctLabel = '<span style="font-size:10px; color:var(--text-muted); margin-left:6px;">(' +
+        pct.toFixed(1) + '%)</span>';
+    }
     html += '<td style="font-weight:600; color:var(--accent);">$' +
       valueUSDT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
-      '<span style="font-size:10px; color:var(--text-muted); margin-left:6px;">(' +
-      pct.toFixed(1) + '%)</span></td>';
+      pctLabel + '</td>';
     html += '</tr>';
   }
   html += '<tr style="border-top:1px solid var(--border);"><td colspan="4" style="font-size:11px; color:var(--text-muted); text-align:right;">Exibindo ' + filtered.length + ' de ' + balances.length + ' ativos</td><td></td></tr>';

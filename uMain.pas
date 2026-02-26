@@ -25,6 +25,7 @@ type
     FTimerPrice: TTimer;
     FTimerBot: TTimer;
     FTimerWallet: TTimer;
+    FTimerPositions: TTimer;  // Monitor rapido de posicoes abertas (TP/trailing)
     FBinance: TBinanceAPI;
     FAIEngine: TAIEngine;
     FDB: TDatabase;
@@ -130,6 +131,7 @@ type
     procedure OnTimerPrice(Sender: TObject);
     procedure OnTimerBot(Sender: TObject);
     procedure OnTimerWallet(Sender: TObject);
+    procedure OnTimerPositions(Sender: TObject);
 
     // HTML
     procedure LoadHtmlFromFile;
@@ -247,6 +249,11 @@ begin
   FTimerWallet.Enabled := False;
   FTimerWallet.OnTimer := OnTimerWallet;
 
+  FTimerPositions := TTimer.Create(Self);
+  FTimerPositions.Interval := 10000;  // Monitora posicoes a cada 10s (TP/trailing)
+  FTimerPositions.Enabled := False;
+  FTimerPositions.OnTimer := OnTimerPositions;
+
   // 5. Config e APIs
   LoadConfig;
 
@@ -304,6 +311,7 @@ begin
   if FTimerPrice <> nil then FTimerPrice.Enabled := False;
   if FTimerBot <> nil then FTimerBot.Enabled := False;
   if FTimerWallet <> nil then FTimerWallet.Enabled := False;
+  if FTimerPositions <> nil then FTimerPositions.Enabled := False;
   FreeAndNil(FBinance);
   FreeAndNil(FAIEngine);
   FreeAndNil(FConfig);
@@ -2410,6 +2418,7 @@ begin
   FBotCoinIndex := 0;
   FTimerBot.Interval := Round(GetCfgDbl('botInterval', 180)) * 1000;
   FTimerBot.Enabled := True;
+  FTimerPositions.Enabled := True;
   D := TJSONObject.Create;
   D.AddPair('running', TJSONBool.Create(True));
   SendToJS('botStatus', D);
@@ -2422,6 +2431,7 @@ var D: TJSONObject;
 begin
   FBotRunning := False;
   FTimerBot.Enabled := False;
+  FTimerPositions.Enabled := False;
   D := TJSONObject.Create;
   D.AddPair('running', TJSONBool.Create(False));
   SendToJS('botStatus', D);
@@ -2676,7 +2686,7 @@ begin
                   LEarliest := FOpenPositions[PI].BuyTime;
               end;
 
-            if LFound and (LTotalQty > 0) then
+            if LFound and (LTotalQty > 0) and ((LTotalQty * LPrice) >= 1.0) then
             begin
               var LAvgPrice := LTotalCost / LTotalQty;
               var LGainPct := ((LPrice - LAvgPrice) / LAvgPrice) * 100;
@@ -3247,7 +3257,42 @@ begin
 
         TThread.Queue(nil, procedure
         var DEnd, DSnap: TJSONObject;
+            LPosMap: TJSONObject;
+            LPosSymList: TList<string>;
         begin
+          // Adiciona dados de posicoes abertas para P&L real na UI
+          LPosMap := TJSONObject.Create;
+          LPosSymList := TList<string>.Create;
+          try
+            for var PI := 0 to FOpenPositions.Count - 1 do
+              if not LPosSymList.Contains(FOpenPositions[PI].Symbol) then
+                LPosSymList.Add(FOpenPositions[PI].Symbol);
+            for var PSym in LPosSymList do
+            begin
+              var LTotQty: Double := 0;
+              var LTotCost: Double := 0;
+              for var PI := 0 to FOpenPositions.Count - 1 do
+                if FOpenPositions[PI].Symbol = PSym then
+                begin
+                  LTotQty := LTotQty + FOpenPositions[PI].Quantity;
+                  LTotCost := LTotCost + (FOpenPositions[PI].BuyPrice * FOpenPositions[PI].Quantity);
+                end;
+              if LTotQty > 0 then
+              begin
+                var PAsset := PSym;
+                if PAsset.EndsWith('USDT') then
+                  PAsset := Copy(PAsset, 1, Length(PAsset) - 4);
+                var PObj := TJSONObject.Create;
+                PObj.AddPair('avgPrice', TJSONNumber.Create(LTotCost / LTotQty));
+                PObj.AddPair('totalQty', TJSONNumber.Create(LTotQty));
+                PObj.AddPair('totalCost', TJSONNumber.Create(LTotCost));
+                LPosMap.AddPair(PAsset, PObj);
+              end;
+            end;
+          finally
+            LPosSymList.Free;
+          end;
+          DWallet.AddPair('positions', LPosMap);
           SendToJS('walletData', DWallet);
           AddLog('Carteira', Format('Carregada: %d ativos, Total: $%.2f USDT',
             [Length(LBalances), LTotalUSDT], FmtDot));
@@ -3626,12 +3671,19 @@ begin
   end;
 end;
 
+procedure TfrmMain.OnTimerPositions(Sender: TObject);
+begin
+  if not FBotRunning then Exit;
+  if FOpenPositions.Count = 0 then Exit;
+  // Monitor rapido: verifica TP e trailing stop a cada 10s
+  CheckStopLossTakeProfit;
+end;
+
 procedure TfrmMain.OnTimerBot(Sender: TObject);
 begin
   if not FBotRunning then Exit;
 
-  // Protecao SEMPRE ativa, mesmo durante analise da IA
-  CheckStopLossTakeProfit;
+  // DCA e lateralizacao rodam no ciclo do bot (menos urgentes)
   CheckDCA;
   CheckLateralPositions;
 
@@ -4509,6 +4561,9 @@ begin
 
         if (LCurrentPrice <= 0) or (LAvgPrice <= 0) then Continue;
 
+        // Ignora poeira (< $1.00)
+        if (LTotalQty * LCurrentPrice) < 1.0 then Continue;
+
         LPriceChange := Abs((LCurrentPrice - LAvgPrice) / LAvgPrice) * 100;
 
         // Se variacao < 3%, esta lateral
@@ -4606,6 +4661,9 @@ begin
       end;
       if LCurrentPrice <= 0 then Continue;
 
+      // Ignora poeira (posicoes < $1.00) - nao gasta API com dust
+      if (LTotalQty * LCurrentPrice) < 1.0 then Continue;
+
       // Atualiza HighestPrice em todas as posicoes do symbol
       if LCurrentPrice > LHighestPrice then
       begin
@@ -4623,6 +4681,16 @@ begin
       LChangePercent := ((LCurrentPrice - LAvgPrice) / LAvgPrice) * 100;
       LNetChange := LChangePercent - FEE_PCT;
       LDropFromPeak := ((LHighestPrice - LCurrentPrice) / LHighestPrice) * 100;
+
+      // Log de diagnostico para acompanhar posicoes
+      AddLog('Monitor', Format(
+        '%s | Medio: $%s | Atual: $%s | P&L: %.2f%% | TP: %.1f%% | Trail: %.1f%% | Pico: $%s | Val: $%.2f',
+        [LSymbol,
+         FormatFloat('0.######', LAvgPrice, FmtDot),
+         FormatFloat('0.######', LCurrentPrice, FmtDot),
+         LNetChange, LTakeProfit, LTrailingPct,
+         FormatFloat('0.######', LHighestPrice, FmtDot),
+         LTotalQty * LCurrentPrice], FmtDot));
 
       // Trailing Stop: queda do pico >= trailing% (delay 5 min da compra mais antiga)
       if (LTrailingPct > 0) and (LDropFromPeak >= LTrailingPct)
