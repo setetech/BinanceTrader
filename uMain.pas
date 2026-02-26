@@ -3311,11 +3311,14 @@ begin
             begin
               var LTotQty: Double := 0;
               var LTotCost: Double := 0;
+              var LHighest: Double := 0;
               for var PI := 0 to FOpenPositions.Count - 1 do
                 if FOpenPositions[PI].Symbol = PSym then
                 begin
                   LTotQty := LTotQty + FOpenPositions[PI].Quantity;
                   LTotCost := LTotCost + (FOpenPositions[PI].BuyPrice * FOpenPositions[PI].Quantity);
+                  if FOpenPositions[PI].HighestPrice > LHighest then
+                    LHighest := FOpenPositions[PI].HighestPrice;
                 end;
               if LTotQty > 0 then
               begin
@@ -3326,6 +3329,7 @@ begin
                 PObj.AddPair('avgPrice', TJSONNumber.Create(LTotCost / LTotQty));
                 PObj.AddPair('totalQty', TJSONNumber.Create(LTotQty));
                 PObj.AddPair('totalCost', TJSONNumber.Create(LTotCost));
+                PObj.AddPair('highestPrice', TJSONNumber.Create(LHighest));
                 LPosMap.AddPair(PAsset, PObj);
               end;
             end;

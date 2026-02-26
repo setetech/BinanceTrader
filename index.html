@@ -3289,7 +3289,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               <th>Bloqueado</th>
               <th>Total</th>
               <th>Valor em USDT</th>
-              <th>Alvo TP</th>
+              <th>TP / Trail</th>
             </tr>
           </thead>
           <tbody id="wallet-tbody">
@@ -5214,14 +5214,26 @@ function renderWalletTable() {
     html += '<td style="font-weight:600; color:var(--accent);">$' +
       valueUSDT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
       pctLabel + '</td>';
-    // Coluna Alvo TP: preco e valor em que sera vendido
+    // Coluna TP / Trail: precos-alvo de venda
     var tpPct = numVal(getInputVal('cfg-takeProfit'), 4);
-    if (posInfo && posInfo.avgPrice > 0 && !isStable && tpPct > 0) {
-      var tpPrice = posInfo.avgPrice * (1 + tpPct / 100);
-      var tpValue = tpPrice * total;
-      html += '<td style="font-size:11px; color:var(--green);">$' +
-        formatPrice(tpPrice) + '<br><span style="color:var(--text-muted);">($' +
-        tpValue.toFixed(2) + ')</span></td>';
+    var trailPct = numVal(getInputVal('cfg-trailingStop'), 1.5);
+    if (posInfo && posInfo.avgPrice > 0 && !isStable) {
+      var tpPrice = tpPct > 0 ? posInfo.avgPrice * (1 + tpPct / 100) : 0;
+      var peakPrice = posInfo.highestPrice || 0;
+      var trailPrice = (trailPct > 0 && peakPrice > 0) ? peakPrice * (1 - trailPct / 100) : 0;
+      var currentPrice = total > 0 ? (valueUSDT / total) : 0;
+      var lines = '';
+      // TP
+      if (tpPrice > 0) {
+        lines += '<span style="color:var(--green);">&#x1F3AF; $' + formatPrice(tpPrice) + '</span>';
+      }
+      // Trailing
+      if (trailPrice > 0) {
+        var trailColor = (currentPrice > 0 && currentPrice <= trailPrice * 1.005) ? 'var(--red)' : 'var(--yellow, #f0b90b)';
+        lines += (lines ? '<br>' : '') + '<span style="color:' + trailColor + ';">&#x26A1; $' + formatPrice(trailPrice) +
+          '</span><span style="color:var(--text-muted);font-size:9px;"> (pico $' + formatPrice(peakPrice) + ')</span>';
+      }
+      html += '<td style="font-size:11px;">' + (lines || '--') + '</td>';
     } else {
       html += '<td style="font-size:11px; color:var(--text-muted);">--</td>';
     }
