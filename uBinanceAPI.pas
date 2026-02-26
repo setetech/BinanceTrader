@@ -6,6 +6,7 @@ uses
   System.SysUtils, System.Classes, System.JSON, System.DateUtils, System.Math,
   System.NetEncoding, System.Hash, System.Net.HttpClient,
   System.Net.URLClient, System.Generics.Collections, System.Generics.Defaults,
+  System.SyncObjs,
   uTypes;
 
 type
@@ -15,6 +16,7 @@ type
     FTestnet: Boolean;
     FTimeOffset: Int64;
     FHttp: THTTPClient;
+    FLock: TCriticalSection;
     FOnLog: TProc<string>;
     function GetTimestamp: Int64;
     function GetLocalTimestamp: Int64;
@@ -74,10 +76,12 @@ begin
   FHttp := THTTPClient.Create;
   FHttp.ConnectionTimeout := 10000;
   FHttp.ResponseTimeout := 30000;
+  FLock := TCriticalSection.Create;
 end;
 
 destructor TBinanceAPI.Destroy;
 begin
+  FLock.Free;
   FHttp.Free;
   inherited;
 end;
@@ -165,46 +169,51 @@ begin
        Copy(FApiKey, 1, 4), Copy(FApiKey, Length(FApiKey)-3, 4), Length(FApiKey),
        FBaseURL + Endpoint]));
 
+  FLock.Enter;
   try
-    FHttp.CustomHeaders['X-MBX-APIKEY'] := FApiKey;
-    if Method = 'GET' then
-    begin
-      if Query <> '' then URL := URL + '?' + Query;
-      Resp := FHttp.Get(URL);
-    end
-    else if Method = 'POST' then
-    begin
-      var S := TStringStream.Create(Query, TEncoding.UTF8);
-      try
-        FHttp.ContentType := 'application/x-www-form-urlencoded';
-        Resp := FHttp.Post(URL, S);
-      finally
-        S.Free;
-      end;
-    end
-    else if Method = 'DELETE' then
-    begin
-      if Query <> '' then URL := URL + '?' + Query;
-      Resp := FHttp.Delete(URL);
-    end;
-
-    if Resp.StatusCode = 200 then
-    begin
-      Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
-      if (not Signed) and (Pos('/ticker/price', Endpoint) = 0) then
+    try
+      FHttp.CustomHeaders['X-MBX-APIKEY'] := FApiKey;
+      if Method = 'GET' then
       begin
-        if Params <> '' then
-          Log('OK: ' + Method + ' ' + Endpoint + '?' + Params)
-        else
-          Log('OK: ' + Method + ' ' + Endpoint);
+        if Query <> '' then URL := URL + '?' + Query;
+        Resp := FHttp.Get(URL);
+      end
+      else if Method = 'POST' then
+      begin
+        var S := TStringStream.Create(Query, TEncoding.UTF8);
+        try
+          FHttp.ContentType := 'application/x-www-form-urlencoded';
+          Resp := FHttp.Post(URL, S);
+        finally
+          S.Free;
+        end;
+      end
+      else if Method = 'DELETE' then
+      begin
+        if Query <> '' then URL := URL + '?' + Query;
+        Resp := FHttp.Delete(URL);
       end;
-    end else
-    begin
-      Log('ERRO ' + IntToStr(Resp.StatusCode) + ': ' + Resp.ContentAsString(TEncoding.UTF8));
-      Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+
+      if Resp.StatusCode = 200 then
+      begin
+        Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+        if (not Signed) and (Pos('/ticker/price', Endpoint) = 0) then
+        begin
+          if Params <> '' then
+            Log('OK: ' + Method + ' ' + Endpoint + '?' + Params)
+          else
+            Log('OK: ' + Method + ' ' + Endpoint);
+        end;
+      end else
+      begin
+        Log('ERRO ' + IntToStr(Resp.StatusCode) + ': ' + Resp.ContentAsString(TEncoding.UTF8));
+        Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+      end;
+    except
+      on E: Exception do Log('Excecao: ' + E.Message);
     end;
-  except
-    on E: Exception do Log('Excecao: ' + E.Message);
+  finally
+    FLock.Leave;
   end;
 end;
 
@@ -216,27 +225,32 @@ var
 begin
   Result := nil;
   URL := 'https://api.binance.com/api' + Endpoint;
+  FLock.Enter;
   try
-    if Params <> '' then URL := URL + '?' + Params;
-    Resp := FHttp.Get(URL);
-    if Resp.StatusCode = 200 then
-    begin
-      Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
-      // Nao loga ticker/price (chamado a cada 5s pelo timer, polui o log)
-      if Pos('/ticker/price', Endpoint) = 0 then
+    try
+      if Params <> '' then URL := URL + '?' + Params;
+      Resp := FHttp.Get(URL);
+      if Resp.StatusCode = 200 then
       begin
-        if Params <> '' then
-          Log('OK: ' + Method + ' ' + Endpoint + '?' + Params)
-        else
-          Log('OK: ' + Method + ' ' + Endpoint);
+        Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+        // Nao loga ticker/price (chamado a cada 5s pelo timer, polui o log)
+        if Pos('/ticker/price', Endpoint) = 0 then
+        begin
+          if Params <> '' then
+            Log('OK: ' + Method + ' ' + Endpoint + '?' + Params)
+          else
+            Log('OK: ' + Method + ' ' + Endpoint);
+        end;
+      end else
+      begin
+        Log('ERRO ' + IntToStr(Resp.StatusCode) + ': ' + Resp.ContentAsString(TEncoding.UTF8));
+        Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
       end;
-    end else
-    begin
-      Log('ERRO ' + IntToStr(Resp.StatusCode) + ': ' + Resp.ContentAsString(TEncoding.UTF8));
-      Result := TJSONObject.ParseJSONValue(Resp.ContentAsString(TEncoding.UTF8));
+    except
+      on E: Exception do Log('Excecao: ' + E.Message);
     end;
-  except
-    on E: Exception do Log('Excecao: ' + E.Message);
+  finally
+    FLock.Leave;
   end;
 end;
 
@@ -690,50 +704,67 @@ begin
     Exit;
   end;
 
-  // Obtem filtros do par (LOT_SIZE + NOTIONAL)
-  if GetSymbolFilters(Symbol, LMinQty, LStepSize, LMinNotional) then
+  // BUY MARKET com quoteOrderQty: Binance calcula qty automaticamente, pula filtros
+  if not ((Side = osBuy) and (OType = otMarket) and (Price > 0)) then
   begin
-    // Ajusta quantidade pelo step size
-    LAdjQty := AdjustQuantity(Quantity, LStepSize, LMinQty);
-    if LAdjQty <= 0 then
+    // Obtem filtros do par (LOT_SIZE + NOTIONAL) para SELL e outros tipos
+    if GetSymbolFilters(Symbol, LMinQty, LStepSize, LMinNotional) then
     begin
-      Result.ErrorMsg := Format('Quantidade %s abaixo do minimo %s',
-        [FormatFloat('0.########', Quantity, FmtDot),
-         FormatFloat('0.########', LMinQty, FmtDot)]);
-      Log('Erro: ' + Result.ErrorMsg);
-      Exit;
-    end;
-
-    // Verifica notional minimo (qty * price >= minNotional)
-    LNotional := LAdjQty * LCurrentPrice;
-    if LNotional < LMinNotional then
-    begin
-      if Side = osSell then
+      // Ajusta quantidade pelo step size (Floor para nao exceder saldo)
+      LAdjQty := AdjustQuantity(Quantity, LStepSize, LMinQty);
+      if LAdjQty < LMinQty then
       begin
-        // SELL: nao pode aumentar qty alem do que temos
-        Result.ErrorMsg := Format('Valor da posicao ($%.2f) abaixo do minimo notional ($%.2f). ' +
-          'Use "Converter pequenos saldos" na Binance.',
-          [LNotional, LMinNotional]);
+        Result.ErrorMsg := Format('Quantidade %s abaixo do minimo %s',
+          [FormatFloat('0.########', Quantity, FmtDot),
+           FormatFloat('0.########', LMinQty, FmtDot)]);
         Log('Erro: ' + Result.ErrorMsg);
         Exit;
       end;
-      // BUY: aumenta qty para atingir o notional minimo
-      LAdjQty := Ceil(LMinNotional / LCurrentPrice / LStepSize) * LStepSize;
-      LNotional := LAdjQty * LCurrentPrice;
-      Log(Format('Ajustando qty para notional minimo: %s (valor: $%s)',
-        [FormatFloat('0.########', LAdjQty, FmtDot),
-         FormatFloat('0.##', LNotional, FmtDot)]));
-    end;
 
-    Quantity := LAdjQty;
-    Result.Quantity := Quantity;
+      // Verifica notional minimo (qty * price >= minNotional)
+      LNotional := LAdjQty * LCurrentPrice;
+      if LNotional < LMinNotional then
+      begin
+        if Side = osSell then
+        begin
+          Result.ErrorMsg := Format('Valor da posicao ($%.2f) abaixo do minimo notional ($%.2f). ' +
+            'Use "Converter pequenos saldos" na Binance.',
+            [LNotional, LMinNotional]);
+          Log('Erro: ' + Result.ErrorMsg);
+          Exit;
+        end;
+        // Outros tipos: aumenta qty para atingir notional minimo
+        if LStepSize > 0 then
+          LAdjQty := Ceil(LMinNotional / LCurrentPrice / LStepSize) * LStepSize
+        else
+          LAdjQty := LMinNotional / LCurrentPrice;
+        LNotional := LAdjQty * LCurrentPrice;
+        Log(Format('Ajustando qty para notional minimo: %s (valor: $%s)',
+          [FormatFloat('0.########', LAdjQty, FmtDot),
+           FormatFloat('0.##', LNotional, FmtDot)]));
+      end;
+
+      Quantity := LAdjQty;
+      Result.Quantity := Quantity;
+    end;
   end;
 
-  P := Format('symbol=%s&side=%s&type=%s&quantity=%s',
-    [Symbol, OrderSideToStr(Side), OrderTypeToStr(OType),
-     FormatFloat('0.########', Quantity, FmtDot)]);
-  if OType in [otLimit, otStopLossLimit, otTakeProfitLimit] then
-    P := P + '&price=' + FormatFloat('0.########', Price, FmtDot) + '&timeInForce=GTC';
+  // BUY MARKET: usa quoteOrderQty (valor em USDT) para evitar problemas de arredondamento
+  // SELL MARKET: usa quantity (qtd do ativo)
+  if (Side = osBuy) and (OType = otMarket) and (Price > 0) then
+  begin
+    // Price contem o valor em USDT a gastar (passado pelo caller)
+    P := Format('symbol=%s&side=BUY&type=MARKET&quoteOrderQty=%s',
+      [Symbol, FormatFloat('0.##', Price, FmtDot)]);
+  end
+  else
+  begin
+    P := Format('symbol=%s&side=%s&type=%s&quantity=%s',
+      [Symbol, OrderSideToStr(Side), OrderTypeToStr(OType),
+       FormatFloat('0.########', Quantity, FmtDot)]);
+    if OType in [otLimit, otStopLossLimit, otTakeProfitLimit] then
+      P := P + '&price=' + FormatFloat('0.########', Price, FmtDot) + '&timeInForce=GTC';
+  end;
 
   Log('Ordem: ' + P);
   J := DoRequest('POST', '/v3/order', P, True);

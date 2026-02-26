@@ -1472,7 +1472,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           </div>
           <div class="input-group">
             <label>Take Profit (%)</label>
-            <input type="number" id="cfg-takeProfit" placeholder="3" step="0.1" min="0">
+            <input type="number" id="cfg-takeProfit" placeholder="8" step="0.1" min="0">
           </div>
           <div class="input-group">
             <label>Confianca Minima (%)</label>
@@ -1484,7 +1484,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
           </div>
           <div class="input-group">
             <label>Intervalo do Bot (segundos)</label>
-            <input type="number" id="cfg-botInterval" placeholder="60" step="1" min="5">
+            <input type="number" id="cfg-botInterval" placeholder="180" step="1" min="5">
           </div>
           <div class="input-group">
             <label>Modo de Scan</label>
@@ -2141,6 +2141,178 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
               </div>
             </div>
 
+            <!-- CENARIOS COMPLETOS COM NUMEROS -->
+            <div style="margin-top:24px;padding:16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:14px;font-weight:700;color:var(--green);margin-bottom:12px;">&#x2705; Cenario 1: Trade com Lucro (Take Profit)</div>
+              <div style="font-size:13px;line-height:1.7;">
+                <strong>Configuracoes:</strong> Valor=$10 | Trailing Stop=3% | Take Profit=8% | Taxa Binance=0.1%
+                <br><br>
+                <strong>1. Compra:</strong> Bot detecta SOLUSDT com score +55 e IA retorna COMPRA com 78% de confianca.
+                <br>&nbsp;&nbsp;&nbsp;Preco: <strong>$150.00</strong> | Quantidade: $10 / $150 = <strong>0.0666 SOL</strong>
+                <br>&nbsp;&nbsp;&nbsp;Taxa de compra: $10 x 0.1% = <strong>-$0.01</strong>
+                <br><br>
+                <strong>2. Preco sobe:</strong> SOL sobe para $162.00 (+8% sobre $150)
+                <br>&nbsp;&nbsp;&nbsp;Take Profit atingido! Bot vende automaticamente.
+                <br><br>
+                <strong>3. Venda:</strong> Vende 0.0666 SOL x $162.00 = <strong>$10.80</strong>
+                <br>&nbsp;&nbsp;&nbsp;Taxa de venda: $10.80 x 0.1% = <strong>-$0.0108</strong>
+                <br><br>
+                <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de compra</td>
+                    <td style="padding:4px;text-align:right;">$10.00</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de venda</td>
+                    <td style="padding:4px;text-align:right;">$10.80</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Taxas (compra + venda)</td>
+                    <td style="padding:4px;text-align:right;color:var(--red);">-$0.0208</td>
+                  </tr>
+                  <tr style="font-weight:700;">
+                    <td style="padding:4px;">Lucro liquido</td>
+                    <td style="padding:4px;text-align:right;color:var(--green);">+$0.779 (+7.79%)</td>
+                  </tr>
+                </table>
+                <br>
+                <div style="color:var(--text-muted);font-size:11px;">
+                  &#x1F4A1; O Take Profit vendeu automaticamente ao atingir +8%. O trailing stop nao foi acionado porque o preco nao caiu 3% do pico.
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:14px;font-weight:700;color:var(--green);margin-bottom:12px;">&#x2705; Cenario 2: Trade com Lucro (Trailing Stop)</div>
+              <div style="font-size:13px;line-height:1.7;">
+                <strong>Configuracoes:</strong> Valor=$10 | Trailing Stop=3% | Take Profit=8% | Taxa Binance=0.1%
+                <br><br>
+                <strong>1. Compra:</strong> ETHUSDT a <strong>$3,000.00</strong> | Quantidade: 0.00333 ETH
+                <br><br>
+                <strong>2. Preco sobe ate $3,210 (+7%):</strong> Ainda nao atingiu TP de 8%. Trailing stop acompanha: pico=$3,210.
+                <br><br>
+                <strong>3. Preco recua para $3,113.70:</strong> Queda de 3% a partir do pico ($3,210).
+                <br>&nbsp;&nbsp;&nbsp;Trailing stop acionado! Bot vende automaticamente.
+                <br><br>
+                <strong>4. Venda:</strong> 0.00333 ETH x $3,113.70 = <strong>$10.38</strong>
+                <br><br>
+                <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de compra</td>
+                    <td style="padding:4px;text-align:right;">$10.00</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de venda</td>
+                    <td style="padding:4px;text-align:right;">$10.38</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Taxas (compra + venda)</td>
+                    <td style="padding:4px;text-align:right;color:var(--red);">-$0.0204</td>
+                  </tr>
+                  <tr style="font-weight:700;">
+                    <td style="padding:4px;">Lucro liquido</td>
+                    <td style="padding:4px;text-align:right;color:var(--green);">+$0.359 (+3.59%)</td>
+                  </tr>
+                </table>
+                <br>
+                <div style="color:var(--text-muted);font-size:11px;">
+                  &#x1F4A1; O preco subiu 7% mas nao atingiu o TP de 8%. Ao recuar 3% do pico, o trailing stop protegeu o lucro. Sem trailing, o preco poderia ter voltado ao preco de compra.
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:12px;">&#x274C; Cenario 3: Trade com Prejuizo (Trailing Stop)</div>
+              <div style="font-size:13px;line-height:1.7;">
+                <strong>Configuracoes:</strong> Valor=$10 | Trailing Stop=3% | Take Profit=8% | Taxa Binance=0.1%
+                <br><br>
+                <strong>1. Compra:</strong> BTCUSDT a <strong>$60,000</strong> | Quantidade: 0.000166 BTC
+                <br><br>
+                <strong>2. Preco sobe levemente ate $60,300 (+0.5%):</strong> Pico registrado = $60,300.
+                <br><br>
+                <strong>3. Preco cai para $58,491:</strong> Queda de 3% a partir do pico ($60,300).
+                <br>&nbsp;&nbsp;&nbsp;Trailing stop acionado! Bot vende automaticamente.
+                <br><br>
+                <strong>4. Venda:</strong> 0.000166 BTC x $58,491 = <strong>$9.749</strong>
+                <br><br>
+                <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de compra</td>
+                    <td style="padding:4px;text-align:right;">$10.00</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de venda</td>
+                    <td style="padding:4px;text-align:right;">$9.749</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Taxas (compra + venda)</td>
+                    <td style="padding:4px;text-align:right;color:var(--red);">-$0.0197</td>
+                  </tr>
+                  <tr style="font-weight:700;">
+                    <td style="padding:4px;">Prejuizo liquido</td>
+                    <td style="padding:4px;text-align:right;color:var(--red);">-$0.271 (-2.71%)</td>
+                  </tr>
+                </table>
+                <br>
+                <div style="color:var(--text-muted);font-size:11px;">
+                  &#x26A0;&#xFE0F; O preco subiu pouco (+0.5%) e depois caiu. O trailing stop limitou o prejuizo a ~2.7%. Sem trailing stop, a perda poderia ser muito maior se o preco continuasse caindo.
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:14px;font-weight:700;color:var(--red);margin-bottom:12px;">&#x274C; Cenario 4: Trade com Prejuizo (Lateralizacao)</div>
+              <div style="font-size:13px;line-height:1.7;">
+                <strong>Configuracoes:</strong> Valor=$10 | Timeout Lateralizacao=24h | Taxa Binance=0.1%
+                <br><br>
+                <strong>1. Compra:</strong> ADAUSDT a <strong>$0.50</strong> | Quantidade: 20 ADA
+                <br><br>
+                <strong>2. Preco fica lateral por 24 horas:</strong> Oscila entre $0.49 e $0.51 sem tendencia clara. Nem o TP nem o trailing stop sao acionados.
+                <br><br>
+                <strong>3. Timeout de 24h atingido:</strong> Bot vende automaticamente ao preco atual de <strong>$0.493</strong>.
+                <br><br>
+                <strong>4. Venda:</strong> 20 ADA x $0.493 = <strong>$9.86</strong>
+                <br><br>
+                <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de compra</td>
+                    <td style="padding:4px;text-align:right;">$10.00</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Valor de venda</td>
+                    <td style="padding:4px;text-align:right;">$9.86</td>
+                  </tr>
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:4px;">Taxas (compra + venda)</td>
+                    <td style="padding:4px;text-align:right;color:var(--red);">-$0.0199</td>
+                  </tr>
+                  <tr style="font-weight:700;">
+                    <td style="padding:4px;">Prejuizo liquido</td>
+                    <td style="padding:4px;text-align:right;color:var(--red);">-$0.160 (-1.60%)</td>
+                  </tr>
+                </table>
+                <br>
+                <div style="color:var(--text-muted);font-size:11px;">
+                  &#x26A0;&#xFE0F; A moeda ficou "presa" sem tendencia. O timeout de lateralizacao libera o capital para o bot buscar novas oportunidades em vez de ficar travado numa posicao sem movimento.
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;padding:16px;background:var(--bg-card);border-radius:8px;border:1px solid rgba(255,215,0,0.3);">
+              <div style="font-size:13px;font-weight:700;color:#ffd700;margin-bottom:8px;">&#x1F4CA; Resumo dos Cenarios</div>
+              <div style="font-size:12px;line-height:1.6;">
+                Com as configuracoes atuais (TS=3%, TP=8%), a <strong>relacao risco/retorno e de ~1:2.7</strong>.
+                <br>Isso significa que <strong>voce pode errar 2 de cada 3 trades e ainda ficar no lucro</strong>:
+                <br><br>
+                <strong>Exemplo com 3 trades de $10:</strong>
+                <br>&#x2705; 1 acerto (TP +8%): +$0.78
+                <br>&#x274C; 2 erros (TS -2.7%): -$0.54
+                <br><strong>Resultado: +$0.24 de lucro</strong> mesmo com 33% de acerto.
+                <br><br>
+                &#x1F4A1; <strong>A chave nao e acertar sempre, e ter uma boa relacao risco/retorno.</strong>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -2329,12 +2501,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
             <div class="help-param">
               <div class="help-param-name">Take Profit (%)</div>
               <div class="help-param-desc">
-                Percentual de lucro alvo para sugerir saida da posicao.
-                <br><strong>Padrao:</strong> 4%
+                Percentual de lucro alvo que aciona a venda automatica da posicao.
+                <br><strong>Padrao:</strong> 8%
                 <br><strong>Calculo:</strong> Preco de entrada x (1 + TakeProfit/100)
-                <br><strong>Exemplo:</strong> Entrada em $100 com TP 4% = Take Profit em $104
+                <br><strong>Exemplo:</strong> Entrada em $100 com TP 8% = Take Profit em $108
                 <br><br><strong>Regra de ouro:</strong> Mantenha uma relacao <strong>Risco:Retorno de pelo menos 1:2</strong>.
-                <br>Se seu Trailing Stop e 2%, o Take Profit deve ser pelo menos 4%.
+                <br>Com Trailing Stop de 3%, o Take Profit de 8% da uma relacao de ~1:2.7.
+                <br><br>&#x2022; Scalping (1-3%): Lucro rapido, alto volume de trades
+                <br>&#x2022; Day Trade (3-5%): Equilibrio entre frequencia e lucro
+                <br>&#x2022; Swing Trade (6-10%): Recomendado - captura movimentos maiores
+                <br>&#x2022; Position (15-30%): Trades de longo prazo
               </div>
             </div>
 
@@ -3964,10 +4140,10 @@ function doSaveConfig() {
     aiKeyDeepseek: state.aiKeys.deepseek || '',
     tradeAmount: numVal(getInputVal('cfg-tradeAmount'), 10),
     trailingStop: numVal(getInputVal('cfg-trailingStop'), 3),
-    takeProfit: numVal(getInputVal('cfg-takeProfit'), 3),
+    takeProfit: numVal(getInputVal('cfg-takeProfit'), 8),
     minConfidence: numVal(getInputVal('cfg-minConfidence'), 70),
     minScore: intVal(getInputVal('cfg-minScore'), 25),
-    botInterval: intVal(getInputVal('cfg-botInterval'), 60),
+    botInterval: intVal(getInputVal('cfg-botInterval'), 180),
     scanMode: (document.getElementById('cfg-scanMode') || {}).value || 'recovery',
     recoveryHours: intVal(getInputVal('cfg-recoveryHours'), 24),
     topCoins: intVal(getInputVal('cfg-topCoins'), 30),

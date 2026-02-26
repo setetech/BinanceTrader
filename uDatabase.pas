@@ -49,8 +49,11 @@ begin
   FConn.Database := ADbPath;
   FConn.SpecificOptions.Values['sqlite.Direct']:='True';
   FConn.SpecificOptions.Values['sqlite.ForceCreateDatabase']:='True';
+  FConn.SpecificOptions.Values['sqlite.UseUnicode']:='True';
   FConn.LoginPrompt := False;
   FConn.Connect;
+  // Garante encoding UTF-8 para caracteres Unicode (ex: moedas asiaticas)
+  FConn.ExecSQL('PRAGMA encoding = "UTF-8"');
   CreateTables;
 end;
 
@@ -122,6 +125,10 @@ begin
       '  take_profit REAL,' +
       '  timestamp TEXT NOT NULL' +
       ')';
+    Q.Execute;
+
+    // Remove registros com symbols corrompidos (caracteres ? de encoding errado)
+    Q.SQL.Text := 'DELETE FROM ai_cache WHERE symbol LIKE ''%?%''';
     Q.Execute;
   finally
     Q.Free;
@@ -407,15 +414,19 @@ begin
     Q.Open;
     while not Q.Eof do
     begin
-      A := Default(TAIAnalysis);
-      A.Signal := StrENToSignal(Q.FieldByName('signal').AsString);
-      A.Confidence := Q.FieldByName('confidence').AsFloat;
-      A.Reasoning := Q.FieldByName('reasoning').AsString;
-      A.SuggestedEntry := Q.FieldByName('entry').AsFloat;
-      A.SuggestedStopLoss := Q.FieldByName('stop_loss').AsFloat;
-      A.SuggestedTakeProfit := Q.FieldByName('take_profit').AsFloat;
-      A.Timestamp := StrToDateTimeDef(Q.FieldByName('timestamp').AsString, Now, Fmt);
-      Result.AddOrSetValue(Q.FieldByName('symbol').AsString, A);
+      try
+        A := Default(TAIAnalysis);
+        A.Signal := StrENToSignal(Q.FieldByName('signal').AsString);
+        A.Confidence := Q.FieldByName('confidence').AsFloat;
+        A.Reasoning := Q.FieldByName('reasoning').AsString;
+        A.SuggestedEntry := Q.FieldByName('entry').AsFloat;
+        A.SuggestedStopLoss := Q.FieldByName('stop_loss').AsFloat;
+        A.SuggestedTakeProfit := Q.FieldByName('take_profit').AsFloat;
+        A.Timestamp := StrToDateTimeDef(Q.FieldByName('timestamp').AsString, Now, Fmt);
+        Result.AddOrSetValue(Q.FieldByName('symbol').AsString, A);
+      except
+        // Ignora registros com erro (ex: encoding) e continua
+      end;
       Q.Next;
     end;
   finally

@@ -147,6 +147,7 @@ var
   IsGreen, FirstPt: Boolean;
   SMAVal: Double;
   Color: TColor;
+  LFmt: TFormatSettings;
 
   function PriceToY(Price: Double): Integer;
   begin
@@ -175,6 +176,9 @@ var
 begin
   Result := '';
   if Length(C) < 20 then Exit;
+
+  LFmt := TFormatSettings.Create;
+  LFmt.DecimalSeparator := '.';
 
   Start := Max(0, Length(C) - 60);
   Count := Length(C) - Start;
@@ -225,7 +229,7 @@ begin
       Bmp.Canvas.MoveTo(ML, YTop);
       Bmp.Canvas.LineTo(W - MR, YTop);
       Bmp.Canvas.TextOut(2, YTop - 6,
-        FormatFloat('0.######', MaxP - PRange * I / 5));
+        FormatFloat('0.######', MaxP - PRange * I / 5, LFmt));
     end;
 
     // Volume separator
@@ -365,7 +369,7 @@ begin
   try
     Req.AddPair('model', FModel);
     Req.AddPair('temperature', TJSONNumber.Create(0.3));
-    Req.AddPair('max_tokens', TJSONNumber.Create(512));
+    Req.AddPair('max_tokens', TJSONNumber.Create(2048));
 
     Msgs := TJSONArray.Create;
 
@@ -422,7 +426,11 @@ begin
           try
             Ch := TJSONObject(RJ).GetValue<TJSONArray>('choices');
             if (Ch <> nil) and (Ch.Count > 0) then
-              Result := TJSONObject(Ch.Items[0]).GetValue<TJSONObject>('message').GetValue<string>('content');
+            begin
+              var LMsg := TJSONObject(Ch.Items[0]).GetValue<TJSONObject>('message');
+              if LMsg <> nil then
+                Result := LMsg.GetValue<string>('content', '');
+            end;
             // Extract token usage
             var Usage := TJSONObject(RJ).GetValue<TJSONObject>('usage');
             if Usage <> nil then
@@ -522,7 +530,7 @@ begin
         else if U = 'BUY' then Result.Signal := tsBuy
         else if U = 'SELL' then Result.Signal := tsSell
         else if U = 'STRONG_SELL' then Result.Signal := tsStrongSell;
-        Result.Confidence := O.GetValue<Double>('confidence', 50);
+        Result.Confidence := EnsureRange(O.GetValue<Double>('confidence', 50), 0, 100);
         Result.Reasoning := O.GetValue<string>('reasoning', Clean);
         Result.SuggestedEntry := O.GetValue<Double>('entry_price', 0);
         Result.SuggestedStopLoss := O.GetValue<Double>('stop_loss', 0);
@@ -564,7 +572,7 @@ begin
         LFmt := TFormatSettings.Create;
         LFmt.DecimalSeparator := '.';
         if TryStrToFloat(Copy(ConfStr, NumStart, NumEnd - NumStart), ConfVal, LFmt) then
-          Result.Confidence := ConfVal;
+          Result.Confidence := EnsureRange(ConfVal, 0, 100);
       end;
     end;
 
@@ -748,7 +756,11 @@ begin
           try
             Ch := TJSONObject(RJ).GetValue<TJSONArray>('choices');
             if (Ch <> nil) and (Ch.Count > 0) then
-              Result := TJSONObject(Ch.Items[0]).GetValue<TJSONObject>('message').GetValue<string>('content');
+            begin
+              var LMsg2 := TJSONObject(Ch.Items[0]).GetValue<TJSONObject>('message');
+              if LMsg2 <> nil then
+                Result := LMsg2.GetValue<string>('content', '');
+            end;
             var Usage := TJSONObject(RJ).GetValue<TJSONObject>('usage');
             if Usage <> nil then
             begin
