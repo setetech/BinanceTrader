@@ -1435,6 +1435,11 @@ begin
               LObj := TJSONObject(LTickers.Items[I]);
               LSymbol := LObj.GetValue<string>('symbol', '');
               if not LSymbol.EndsWith('USDT') then Continue;
+              // Exclui stablecoins e wrapped tokens (nunca atingem TP)
+              if (LSymbol = 'FDUSDUSDT') or (LSymbol = 'USDCUSDT') or
+                 (LSymbol = 'BUSDUSDT') or (LSymbol = 'TUSDUSDT') or
+                 (LSymbol = 'DAIUSDT') or (LSymbol = 'EURUSDT') or
+                 (LSymbol = 'WBTCUSDT') or (LSymbol = 'WBETHUSDT') then Continue;
               LVol := StrToFloatDef(LObj.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
               if LVol < 1000000 then Continue;
 
