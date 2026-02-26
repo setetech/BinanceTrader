@@ -91,6 +91,7 @@ type
     HighPrice: Double;
     LowPrice: Double;
     QuoteVolume: Double;
+    PrevClosePrice: Double;  // Preco de fechamento 24h atras (evita re-fetch)
     ScanMetric: Double;  // Valor especifico do filtro (RSI, squeeze, etc.)
   end;
   TCoinRecoveryArray = TArray<TCoinRecovery>;

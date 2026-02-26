@@ -1323,8 +1323,6 @@ begin
     LNeedIndicators: Boolean;
     LCandles: TCandleArray;
     LInd: TTechnicalIndicators;
-    LTicker2: TJSONObject;
-    LPrice24h, LVol24h: Double;
     LBBWidth, LPrevHist: Double;
   begin
     try
@@ -1375,6 +1373,7 @@ begin
               LCoin.HighPrice := StrToFloatDef(LTk.GetValue<string>('highPrice', '0'), 0, FmtDot);
               LCoin.LowPrice := StrToFloatDef(LTk.GetValue<string>('lowPrice', '0'), 0, FmtDot);
               LCoin.QuoteVolume := StrToFloatDef(LTk.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
+              LCoin.PrevClosePrice := StrToFloatDef(LTk.GetValue<string>('prevClosePrice', '0'), 0, FmtDot);
               LCoin.ScanMetric := LCoin.QuoteVolume;
               LAIList.Add(LCoin);
             finally
@@ -1452,6 +1451,7 @@ begin
               LCoin.HighPrice := StrToFloatDef(LObj.GetValue<string>('highPrice', '0'), 0, FmtDot);
               LCoin.LowPrice := StrToFloatDef(LObj.GetValue<string>('lowPrice', '0'), 0, FmtDot);
               LCoin.QuoteVolume := LVol;
+              LCoin.PrevClosePrice := StrToFloatDef(LObj.GetValue<string>('prevClosePrice', '0'), 0, FmtDot);
               LCoin.ScanMetric := 0;
               LPreList.Add(LCoin);
             end;
@@ -1539,21 +1539,8 @@ begin
 
                 if (LCandles <> nil) and (Length(LCandles) >= 20) then
                 begin
-                  LPrice24h := 0; LVol24h := 0;
-                  try
-                    LTicker2 := FBinance.Get24hTicker(LCoin.Symbol);
-                    try
-                      if LTicker2 <> nil then
-                      begin
-                        LPrice24h := StrToFloatDef(LTicker2.GetValue<string>('prevClosePrice', '0'), 0, FmtDot);
-                        LVol24h := StrToFloatDef(LTicker2.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
-                      end;
-                    finally
-                      LTicker2.Free;
-                    end;
-                  except end;
-
-                  LInd := TTechnicalAnalysis.FullAnalysis(LCandles, LPrice24h, LVol24h);
+                  // Usa dados do scan (Passo 1) em vez de re-buscar ticker
+                  LInd := TTechnicalAnalysis.FullAnalysis(LCandles, LCoin.PrevClosePrice, LCoin.QuoteVolume);
                   LCoin.Price := LInd.CurrentPrice;
 
                   // c) RSI extremo
@@ -1642,22 +1629,8 @@ begin
                 end;
                 if Length(LCandles) < 20 then Continue;
 
-                // Calcula indicadores
-                LPrice24h := 0; LVol24h := 0;
-                try
-                  LTicker2 := FBinance.Get24hTicker(LCoin.Symbol);
-                  try
-                    if LTicker2 <> nil then
-                    begin
-                      LPrice24h := StrToFloatDef(LTicker2.GetValue<string>('prevClosePrice', '0'), 0, FmtDot);
-                      LVol24h := StrToFloatDef(LTicker2.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
-                    end;
-                  finally
-                    LTicker2.Free;
-                  end;
-                except end;
-
-                LInd := TTechnicalAnalysis.FullAnalysis(LCandles, LPrice24h, LVol24h);
+                // Usa dados do scan (Passo 1) em vez de re-buscar ticker
+                LInd := TTechnicalAnalysis.FullAnalysis(LCandles, LCoin.PrevClosePrice, LCoin.QuoteVolume);
 
                 // --- RSI Extremos ---
                 if LScanMode = 'rsi' then
@@ -3760,8 +3733,7 @@ begin
     LCandles: TCandleArray;
     LIndicators: TTechnicalIndicators;
     LAnalysis: TAIAnalysis;
-    LTicker: TJSONObject;
-    LPrice24hAgo, LVol24h, LScore: Double;
+    LScore: Double;
     LBreakdown: string;
     LHasPos: Boolean;
     LBuyPrice: Double;
@@ -3830,35 +3802,26 @@ begin
         end;
         if Length(LCandles) = 0 then Continue;
 
-        // 2. Indicadores
-        LPrice24hAgo := 0; LVol24h := 0;
-        try
-          LTicker := FBinance.Get24hTicker(LSymbol);
+        // 2. Indicadores (usa dados do scan, evita re-fetch do ticker 24h)
+        var LPrev := LCoins[CI].PrevClosePrice;
+        var LQVol := LCoins[CI].QuoteVolume;
+        // Moedas injetadas (posicoes abertas que nao estavam no scan) nao tem dados
+        if (LPrev <= 0) and (LQVol <= 0) then
+        begin
+          var LTicker: TJSONObject := nil;
           try
+            LTicker := FBinance.Get24hTicker(LSymbol);
             if LTicker <> nil then
             begin
-              LPrice24hAgo := StrToFloatDef(LTicker.GetValue<string>('prevClosePrice', '0'), 0, FmtDot);
-              LVol24h := StrToFloatDef(LTicker.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
+              LPrev := StrToFloatDef(LTicker.GetValue<string>('prevClosePrice', '0'), 0, FmtDot);
+              LQVol := StrToFloatDef(LTicker.GetValue<string>('quoteVolume', '0'), 0, FmtDot);
             end;
           finally
             LTicker.Free;
           end;
-        except end;
+        end;
 
-        LIndicators := TTechnicalAnalysis.FullAnalysis(LCandles, LPrice24hAgo, LVol24h);
-
-        // 2b. Order Book
-        try
-          var LOB := FBinance.GetOrderBook(LSymbol, 100);
-          LIndicators.OBImbalance := LOB.Imbalance;
-          LIndicators.OBSpread := LOB.Spread;
-          LIndicators.OBBidTotal := LOB.BidTotal;
-          LIndicators.OBAskTotal := LOB.AskTotal;
-          LIndicators.OBBigBidWall := LOB.BiggestBidWall;
-          LIndicators.OBBigAskWall := LOB.BiggestAskWall;
-          LIndicators.OBBigBidPrice := LOB.BiggestBidWallPrice;
-          LIndicators.OBBigAskPrice := LOB.BiggestAskWallPrice;
-        except end;
+        LIndicators := TTechnicalAnalysis.FullAnalysis(LCandles, LPrev, LQVol);
 
         // 3. Verifica posicao para contexto (ANTES do pre-filtro)
         // Agrupa TODAS as posicoes DCA (preco medio ponderado)
@@ -3958,6 +3921,19 @@ begin
 
           if not LUsedCache then
           begin
+            // Order Book: so busca quando vai enviar para IA (economia ~80% das chamadas)
+            try
+              var LOB := FBinance.GetOrderBook(LSymbol, 100);
+              LIndicators.OBImbalance := LOB.Imbalance;
+              LIndicators.OBSpread := LOB.Spread;
+              LIndicators.OBBidTotal := LOB.BidTotal;
+              LIndicators.OBAskTotal := LOB.AskTotal;
+              LIndicators.OBBigBidWall := LOB.BiggestBidWall;
+              LIndicators.OBBigAskWall := LOB.BiggestAskWall;
+              LIndicators.OBBigBidPrice := LOB.BiggestBidWallPrice;
+              LIndicators.OBBigAskPrice := LOB.BiggestAskWallPrice;
+            except end;
+
             Inc(LAISent);
             var LAIMsg := Format('[IA #%d] %s: Confirmando com IA (score %.0f)... (%d/%d)',
               [LAISent, LSymbol, LScore, CI + 1, Length(LCoins)]);
@@ -4131,7 +4107,7 @@ begin
           end;
         end;
 
-        Sleep(200); // Pequeno delay entre moedas para nao bater rate limit
+        Sleep(50); // Rate limit minimo (agora com menos API calls por moeda)
       end;
 
       var LSummary := Format('=== Ciclo completo: %d moedas, %d enviadas p/ IA, %d puladas/cache ===',
