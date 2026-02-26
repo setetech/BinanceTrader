@@ -2879,8 +2879,10 @@ begin
   var
     LAsset: string;
     LBal: TAssetBalance;
-    LPrice, LQty: Double;
+    LPrice, LQty, LAvgPrice, LTotalCost, LTotalQty: Double;
     LAlreadyTracked: Boolean;
+    LTrades: TJSONArray;
+    LEarliestBuy: TDateTime;
   begin
     LAsset := Symbol.Replace('USDT', '');
 
@@ -2896,16 +2898,10 @@ begin
         end;
     end);
 
-    if LAlreadyTracked then
-    begin
-      TThread.Queue(nil, procedure
-      begin
-        AddLog('Posicao', Symbol + ' ja esta registrada como posicao aberta');
-      end);
-      Exit;
-    end;
+    // Se ja rastreada, atualiza preco com historico real (corrige registros com preco errado)
+    // Nao faz Exit - continua para recalcular preco do historico
 
-    // Busca saldo e preco
+    // Busca saldo e preco atual
     try
       LBal := FBinance.GetBalance(LAsset);
       LQty := LBal.Free + LBal.Locked;
@@ -2936,37 +2932,92 @@ begin
       end;
     end;
 
-    // Registra posicao
+    // Busca preco real de compra no historico de trades da Binance
+    LAvgPrice := LPrice; // Fallback: preco atual
+    LEarliestBuy := Now;
+    try
+      LTrades := FBinance.GetMyTrades(Symbol, 50);
+      if (LTrades <> nil) then
+      try
+        // Percorre trades do mais recente para o mais antigo
+        // Acumula BUYs ate atingir a quantidade do saldo atual
+        LTotalCost := 0;
+        LTotalQty := 0;
+        for var TI := LTrades.Count - 1 downto 0 do
+        begin
+          var LTrade := TJSONObject(LTrades.Items[TI]);
+          var LIsBuyer := LTrade.GetValue<Boolean>('isBuyer', False);
+          if not LIsBuyer then Continue;
+
+          var LTrdPrice := StrToFloatDef(LTrade.GetValue<string>('price', '0'), 0, FmtDot);
+          var LTrdQty := StrToFloatDef(LTrade.GetValue<string>('qty', '0'), 0, FmtDot);
+          var LTrdTime := LTrade.GetValue<Int64>('time', 0);
+
+          if (LTrdPrice <= 0) or (LTrdQty <= 0) then Continue;
+
+          LTotalCost := LTotalCost + (LTrdPrice * LTrdQty);
+          LTotalQty := LTotalQty + LTrdQty;
+          if LTrdTime > 0 then
+            LEarliestBuy := UnixToDateTime(LTrdTime div 1000, False);
+
+          // Ja acumulou quantidade suficiente para explicar o saldo
+          if LTotalQty >= (LQty * 0.99) then Break;
+        end;
+
+        if LTotalQty > 0 then
+          LAvgPrice := LTotalCost / LTotalQty;
+      finally
+        LTrades.Free;
+      end;
+    except
+      // Fallback: usa preco atual se nao conseguir historico
+      var LWarnMsg := 'Aviso: nao foi possivel buscar historico de trades de ' + Symbol + ', usando preco atual';
+      TThread.Synchronize(nil, procedure begin AddLog('Aviso', LWarnMsg); end);
+    end;
+
+    // Registra posicao com preco REAL de compra
+    var LFinalPrice := LAvgPrice;
+    var LFinalTime := LEarliestBuy;
     TThread.Queue(nil, procedure
     var
       LPos: TOpenPosition;
     begin
+      // Remove posicoes antigas do symbol (se existem com preco errado)
+      for var PI := FOpenPositions.Count - 1 downto 0 do
+        if FOpenPositions[PI].Symbol = Symbol then
+          FOpenPositions.Delete(PI);
+      FDB.DeleteAllPositions(Symbol);
+
       LPos.Symbol := Symbol;
-      LPos.BuyPrice := LPrice;
-      LPos.BuyTime := Now;
+      LPos.BuyPrice := LFinalPrice;
+      LPos.BuyTime := LFinalTime;
       LPos.Quantity := LQty;
-      LPos.HighestPrice := LPrice;
+      LPos.HighestPrice := LPrice; // Pico = preco atual (conservador)
       FOpenPositions.Add(LPos);
       try
-        FDB.SavePosition(Symbol, LPrice, Now, LQty, LPrice);
+        FDB.SavePosition(Symbol, LFinalPrice, LFinalTime, LQty, LPrice);
       except end;
 
       if not FSymbolFirstEntry.ContainsKey(Symbol) then
-        FSymbolFirstEntry.AddOrSetValue(Symbol, Now);
+        FSymbolFirstEntry.AddOrSetValue(Symbol, LFinalTime);
 
-      AddLog('Posicao', Format('REGISTRADA: %s | Preco: $%s | Qty: %s | Valor: $%.2f',
+      AddLog('Posicao', Format('REGISTRADA: %s | Preco medio: $%s (do historico) | Qty: %s | Valor: $%.2f | P&L: %.2f%%',
         [Symbol,
-         FormatFloat('0.########', LPrice, FmtDot),
+         FormatFloat('0.########', LFinalPrice, FmtDot),
          FormatFloat('0.########', LQty, FmtDot),
-         LQty * LPrice]));
+         LQty * LPrice,
+         ((LPrice - LFinalPrice) / LFinalPrice) * 100]));
       SendTelegram(Format(
         '&#x1F4CB; <b>POSICAO REGISTRADA</b> %s'#10 +
-        'Preco: $%s | Qty: %s'#10 +
-        'Valor: $%.2f',
+        'Medio: $%s (historico) | Atual: $%s'#10 +
+        'Qty: %s | Valor: $%.2f'#10 +
+        'P&L: %.2f%%',
         [Symbol,
+         FormatFloat('0.####', LFinalPrice, FmtDot),
          FormatFloat('0.####', LPrice, FmtDot),
          FormatFloat('0.####', LQty, FmtDot),
-         LQty * LPrice]));
+         LQty * LPrice,
+         ((LPrice - LFinalPrice) / LFinalPrice) * 100]));
     end);
   end).Start;
 end;
