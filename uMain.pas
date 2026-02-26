@@ -46,6 +46,7 @@ type
     FSymbolFirstEntry: TDictionary<string, TDateTime>;  // Primeira entrada por symbol (sobrevive ciclos compra/venda)
     FLateralBlacklist: TDictionary<string, TDateTime>;  // Symbols vendidos por lateralizacao (bloqueio de recompra)
     FSellingSymbols: TDictionary<string, Boolean>;      // Guard: impede vendas duplicadas do mesmo symbol
+    FPendingBuys: TDictionary<string, TDateTime>;      // Confirmacao dupla: sinal deve persistir 2 ciclos
     FAICacheLoadCount: Integer;
     FOptimizer: TGeneticOptimizer;
     FOptimizing: Boolean;
@@ -194,6 +195,7 @@ begin
   FSymbolFirstEntry := TDictionary<string, TDateTime>.Create;
   FLateralBlacklist := TDictionary<string, TDateTime>.Create;
   FSellingSymbols := TDictionary<string, Boolean>.Create;
+  FPendingBuys := TDictionary<string, TDateTime>.Create;
   FAICache := TDictionary<string, TAIAnalysis>.Create;  // Sera preenchido do DB apos FDB.Create
   FOptimizer := nil;
   FOptimizing := False;
@@ -320,6 +322,7 @@ begin
   FreeAndNil(FSymbolFirstEntry);
   FreeAndNil(FLateralBlacklist);
   FreeAndNil(FSellingSymbols);
+  FreeAndNil(FPendingBuys);
   FreeAndNil(FAICache);
   FreeAndNil(FDB);
 end;
@@ -4059,28 +4062,60 @@ begin
             begin
               if (LAnalysis.Signal in [tsStrongBuy, tsBuy]) and not LHasPos then
               begin
-                var LBuyMsg := Format('AUTO-COMPRA %s | Confianca: %.0f%% | %s', [LSymbol, LAnalysis.Confidence, LAnalysis.Reasoning]);
-                var LBuyChart := '';
-                try LBuyChart := FAIEngine.GenerateChartBase64(LCandles); except end;
+                // Confirmacao dupla: sinal deve persistir em 2 ciclos consecutivos
+                var LPendingTime: TDateTime;
+                var LIsConfirmed := False;
                 TThread.Synchronize(nil, procedure
-                var LSaved: string;
                 begin
-                  LSaved := FSelectedSymbol;
-                  FSelectedSymbol := LSymbol;
-                  FLastIndicators.CurrentPrice := LIndicators.CurrentPrice;
-                  FLastAnalysis := LAnalysis;  // Salva analise para o trade registrar o sinal correto
-                  AddLog('Trade', LBuyMsg);
-                  DoBuy(LTradeAmt);
-                  FLastTradeTime.AddOrSetValue(LSymbol, Now);
-                  FSelectedSymbol := LSaved;
-                  SendTelegramPhoto(
-                    '&#x2705; <b>AUTO-COMPRA</b> ' + LSymbol + #10 +
-                    'Confianca: ' + FormatFloat('0', LAnalysis.Confidence) + '%' + #10 +
-                    LAnalysis.Reasoning, LBuyChart);
+                  if FPendingBuys.TryGetValue(LSymbol, LPendingTime) then
+                    LIsConfirmed := True  // Ja tinha sinal pendente do ciclo anterior
+                  else
+                  begin
+                    FPendingBuys.AddOrSetValue(LSymbol, Now);
+                    AddLog('Bot', Format('%s: Sinal BUY pendente (%.0f%%) - aguardando confirmacao no proximo ciclo',
+                      [LSymbol, LAnalysis.Confidence]));
+                  end;
                 end);
-                Sleep(2000);
+
+                if LIsConfirmed then
+                begin
+                  var LBuyMsg := Format('AUTO-COMPRA %s | Confianca: %.0f%% (confirmada) | %s', [LSymbol, LAnalysis.Confidence, LAnalysis.Reasoning]);
+                  var LBuyChart := '';
+                  try LBuyChart := FAIEngine.GenerateChartBase64(LCandles); except end;
+                  TThread.Synchronize(nil, procedure
+                  var LSaved: string;
+                  begin
+                    LSaved := FSelectedSymbol;
+                    FSelectedSymbol := LSymbol;
+                    FLastIndicators.CurrentPrice := LIndicators.CurrentPrice;
+                    FLastAnalysis := LAnalysis;
+                    AddLog('Trade', LBuyMsg);
+                    DoBuy(LTradeAmt);
+                    FLastTradeTime.AddOrSetValue(LSymbol, Now);
+                    FPendingBuys.Remove(LSymbol);
+                    FSelectedSymbol := LSaved;
+                    SendTelegramPhoto(
+                      '&#x2705; <b>AUTO-COMPRA</b> ' + LSymbol + #10 +
+                      'Confianca: ' + FormatFloat('0', LAnalysis.Confidence) + '%' + #10 +
+                      LAnalysis.Reasoning, LBuyChart);
+                  end);
+                  Sleep(2000);
+                end;
               end
-              else if (LAnalysis.Signal in [tsStrongSell, tsSell]) and LHasPos then
+              else
+              begin
+                // Sinal nao e BUY → invalida pending se existia
+                TThread.Synchronize(nil, procedure
+                begin
+                  if FPendingBuys.ContainsKey(LSymbol) then
+                  begin
+                    FPendingBuys.Remove(LSymbol);
+                    AddLog('Bot', Format('%s: Sinal mudou (nao BUY) - pendente cancelado', [LSymbol]));
+                  end;
+                end);
+              end;
+
+              if (LAnalysis.Signal in [tsStrongSell, tsSell]) and LHasPos then
               begin
                 var LSellMsg := Format('AUTO-VENDA %s | Confianca: %.0f%% | %s', [LSymbol, LAnalysis.Confidence, LAnalysis.Reasoning]);
                 var LSellChart := '';
@@ -4109,6 +4144,26 @@ begin
 
         Sleep(50); // Rate limit minimo (agora com menos API calls por moeda)
       end;
+
+      // Limpa pendentes que nao se confirmaram (sinal desapareceu)
+      // Se um pending tem mais de 5 minutos sem confirmar, descarta
+      TThread.Synchronize(nil, procedure
+      var LExpired: TList<string>;
+      begin
+        LExpired := TList<string>.Create;
+        try
+          for var LPair in FPendingBuys do
+            if MinutesBetween(Now, LPair.Value) > 5 then
+              LExpired.Add(LPair.Key);
+          for var LKey in LExpired do
+          begin
+            FPendingBuys.Remove(LKey);
+            AddLog('Bot', Format('%s: Sinal BUY expirou (nao confirmado em 5 min)', [LKey]));
+          end;
+        finally
+          LExpired.Free;
+        end;
+      end);
 
       var LSummary := Format('=== Ciclo completo: %d moedas, %d enviadas p/ IA, %d puladas/cache ===',
         [Length(LCoins), LAISent, LAISkipped]);
