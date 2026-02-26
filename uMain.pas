@@ -2309,12 +2309,20 @@ begin
         TThread.Queue(nil, procedure
         begin
           FSellingSymbols.Remove(LSymbol);
-          AddLog('Erro', Format('Sem saldo de %s na Binance (free=%.8f)', [LAsset, LBal.Free]));
-          for var PI := FOpenPositions.Count - 1 downto 0 do
-            if FOpenPositions[PI].Symbol = LSymbol then
-              FOpenPositions.Delete(PI);
-          FDB.DeleteAllPositions(LSymbol);
-          AddLog('Bot', 'Posicoes locais removidas (sem saldo real): ' + LSymbol);
+          if (LBal.Free + LBal.Locked) > 0 then
+            // Saldo existe mas esta bloqueado (ordem em andamento) - nao apaga posicao
+            AddLog('Erro', Format('Saldo de %s bloqueado (free=%.8f locked=%.8f) - tentando novamente depois',
+              [LAsset, LBal.Free, LBal.Locked]))
+          else
+          begin
+            // Realmente sem saldo nenhum - apaga posicao local
+            AddLog('Erro', Format('Sem saldo de %s na Binance (free=0 locked=0)', [LAsset]));
+            for var PI := FOpenPositions.Count - 1 downto 0 do
+              if FOpenPositions[PI].Symbol = LSymbol then
+                FOpenPositions.Delete(PI);
+            FDB.DeleteAllPositions(LSymbol);
+            AddLog('Bot', 'Posicoes locais removidas (sem saldo real): ' + LSymbol);
+          end;
         end);
         Exit;
       end;
