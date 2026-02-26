@@ -5229,9 +5229,27 @@ function renderWalletTable() {
       }
       // Trailing
       if (trailPrice > 0) {
-        var trailColor = (currentPrice > 0 && currentPrice <= trailPrice * 1.005) ? 'var(--red)' : 'var(--yellow, #f0b90b)';
-        lines += (lines ? '<br>' : '') + '<span style="color:' + trailColor + ';">&#x26A1; $' + formatPrice(trailPrice) +
+        var trailSafe = trailPrice >= posInfo.avgPrice; // trail ja garante lucro?
+        var trailColor;
+        var trailIcon;
+        if (currentPrice > 0 && currentPrice <= trailPrice * 1.005) {
+          trailColor = 'var(--red)'; trailIcon = '&#x26A1;'; // perto de disparar
+        } else if (trailSafe) {
+          trailColor = 'var(--green)'; trailIcon = '&#x1F6E1;&#xFE0F;'; // protegido - lucro garantido
+        } else {
+          trailColor = 'var(--yellow, #f0b90b)'; trailIcon = '&#x26A1;'; // abaixo do break-even
+        }
+        lines += (lines ? '<br>' : '') + '<span style="color:' + trailColor + ';">' + trailIcon + ' $' + formatPrice(trailPrice) +
           '</span><span style="color:var(--text-muted);font-size:9px;"> (pico $' + formatPrice(peakPrice) + ')</span>';
+        // Indicador de seguranca
+        if (trailSafe) {
+          var trailPnl = ((trailPrice - posInfo.avgPrice) / posInfo.avgPrice * 100);
+          lines += '<br><span style="font-size:9px;color:var(--green);">&#x2705; lucro minimo +' + trailPnl.toFixed(1) + '%</span>';
+        } else {
+          var safePeak = posInfo.avgPrice / (1 - trailPct / 100);
+          var needMore = ((safePeak - peakPrice) / peakPrice * 100);
+          lines += '<br><span style="font-size:9px;color:var(--text-muted);">&#x1F512; pico precisa +' + needMore.toFixed(1) + '% p/ proteger</span>';
+        }
       }
       html += '<td style="font-size:11px;">' + (lines || '--') + '</td>';
     } else {
